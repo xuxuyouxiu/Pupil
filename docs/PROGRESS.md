@@ -111,6 +111,8 @@
 | Hermes/Codex 时间戳 | Hermes 用 Unix 秒（REAL）；Codex 桌面版 sqlite 用毫秒（INTEGER），rollout jsonl 用 ISO 字符串，注意换算 |
 | 通知策略与视图状态 | 展示态必须按"事件语义"算而非"事件应用后"的会话状态——turn_completed 应用后视图已 idle，按视图算完成提醒会被吞（v0.2.0 修复的典型坑） |
 | electron-builder 资源路径 | 打包后 `__dirname` 相对路径失效；统一走 `resourcePath()`（dev=项目 resources/，打包=`process.resourcesPath/`） |
+| SVG 圆心必须显式写 | `<circle>` 漏写 `cx/cy` 时默认 (0,0)=viewBox 左上角，环/圆会画到角落（v0.2.1 状态环错位根因）；代码评审时把"圆无 cx"列为检查项 |
+| 透明窗口与文字渲染 | Windows 上 `transparent: true` 窗口禁用 ClearType，文字发虚；需要清晰文字的窗口（面板/设置）用不透明窗口 + 实色底，只有悬浮球本体保留透明 |
 
 ---
 

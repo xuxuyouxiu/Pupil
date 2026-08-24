@@ -126,12 +126,14 @@ export class WindowManager {
       height: Math.min(PANEL_MAX_HEIGHT, 420),
       show: false,
       frame: false,
-      transparent: true,
+      // 面板不透明：透明窗口在 Windows 上禁用 ClearType，文字发虚看不清（用户反馈）。
+      // 圆角由 CSS 内部裁切呈现，四角以底色填充。
+      transparent: false,
       resizable: false,
       alwaysOnTop: true,
       skipTaskbar: true,
       hasShadow: false,
-      backgroundColor: '#00000000',
+      backgroundColor: '#0d1117',
       webPreferences: {
         preload: join(__dirname, '../preload/index.js'),
         backgroundThrottling: false,

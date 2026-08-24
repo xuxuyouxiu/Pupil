@@ -2,6 +2,12 @@
 
 本文件记录 Pupil 的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.2.1] - 2026-08-24
+
+### 修复
+- **状态环圆心错位（用户反馈"头上两条线"的真正根因）**：`RingSegments` 三处 `<circle>` 漏写 `cx/cy`，SVG 默认圆心落在 viewBox 左上角 (0,0)，状态环没有环绕球体、只露出两段悬空弧线；补上 `cx=28 cy=28` 与球体同心，并全库排查确认 EyeSystem 等其余 21 个圆均无同类问题（`src/renderer/ball/Ball.tsx`）
+- **面板文字发虚（用户反馈"里面的文字看不清"）**：面板窗口 `transparent: true` 在 Windows 上会禁用 ClearType 亚像素渲染，文字发灰模糊；面板已定实色底，改为不透明窗口 + `backgroundColor: #0d1117`，文字恢复清晰渲染（`src/main/window-manager.ts`、`panel.css` 实色兜底 + `--panel-alpha: 1`）
+
 ## [0.2.0] - 2026-08-24
 
 ### 新增

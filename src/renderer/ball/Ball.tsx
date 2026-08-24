@@ -58,13 +58,21 @@ function ringAnimClass(state: DisplayState): string {
 
 /** 按会话绘制分段弧；>5 会话时合并为单色环 */
 function RingSegments({ views }: { views: SessionView[] }) {
+  // 注意：所有环都必须显式指定 cx/cy=28（SVG 默认圆心是 (0,0)/viewBox 左上角，
+  // 漏写会导致弧线画到窗口角落——曾因此出现"球顶两段悬空弧线"）
+  const CX = 28
+  const CY = 28
   if (views.length === 0) {
-    return <circle r={R} fill="none" stroke="var(--state-offline)" strokeWidth={1.6} opacity={0.5} />
+    return (
+      <circle cx={CX} cy={CY} r={R} fill="none" stroke="var(--state-offline)" strokeWidth={1.6} opacity={0.5} />
+    )
   }
   if (views.length > MAX_SEGMENTS) {
     const agg = aggregateState(views)
     return (
       <circle
+        cx={CX}
+        cy={CY}
         r={R}
         fill="none"
         stroke={STATE_COLOR[agg]}
@@ -83,6 +91,8 @@ function RingSegments({ views }: { views: SessionView[] }) {
         return (
           <circle
             key={view.key}
+            cx={CX}
+            cy={CY}
             r={R}
             fill="none"
             stroke={color}
