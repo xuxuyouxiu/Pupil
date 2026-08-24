@@ -1,6 +1,7 @@
 /**
  * Notifier —— 通知策略执行器（主进程侧）
- * - 音效：通过 IPC 通知球窗 renderer 用 Web Audio 合成播放（HTML5 Audio 通道）
+ * - 音效：通过 IPC 通知球窗 renderer 用 Web Audio 合成播放（HTML5 Audio 通道），
+ *   每条指令携带当前音色包/音量（config 实时读取，改设置即刻生效）
  * - 系统通知：Electron Notification（Windows Toast），silent: true 避免系统提示音与自定义音效叠加
  * - 点击 Toast：优先跳转对应会话窗口，找不到则回退聚焦悬浮球
  */
@@ -8,6 +9,7 @@ import { Notification, BrowserWindow } from 'electron'
 import { resolveStrategy } from '../core/notify-rules'
 import { AgentEvent, SessionView } from '../shared/events'
 import { IPC } from '../shared/ipc-channels'
+import { ConfigStore } from './config'
 
 /** 按展示态选择合成音效类型（renderer 端 Web Audio 合成） */
 const SOUND_BY_STATE: Record<string, string> = {
@@ -24,7 +26,10 @@ export type ToastClickHandler = (view: SessionView) => void
 export class Notifier {
   private onClick: ToastClickHandler | null = null
 
-  constructor(private getBall: () => BrowserWindow | null) {}
+  constructor(
+    private getBall: () => BrowserWindow | null,
+    private config?: ConfigStore
+  ) {}
 
   /** 注入 Toast 点击处理（依赖 WindowManager 与 win32 激活链路） */
   setClickHandler(fn: ToastClickHandler): void {
@@ -37,12 +42,14 @@ export class Notifier {
     _event: AgentEvent,
     view?: SessionView
   ): void => {
-    // 音效：驱动球窗 renderer 播放
+    // 音效：驱动球窗 renderer 播放（指令携带最新音色包/音量）
     if (strategy.sound) {
       const ball = this.getBall()
       if (ball && !ball.isDestroyed()) {
         ball.webContents.send(IPC.soundPlay, {
-          type: SOUND_BY_STATE[strategy.displayState] ?? 'done'
+          type: SOUND_BY_STATE[strategy.displayState] ?? 'done',
+          pack: this.config?.get('soundPack') ?? 'chime',
+          volume: this.config?.get('soundVolume') ?? 0.8
         })
       }
     }

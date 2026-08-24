@@ -1,14 +1,21 @@
 /**
  * Settings —— 设置视图（面板内，MVP 并入面板，独立窗口 P1）
- * 分区：通知 / 数据接入（adapter 开关）/ Claude Code Hooks 管理
+ * 分区：通知（勿扰/静音/音色包/音量）/ 数据接入（adapter 开关）/ Claude Code Hooks 管理
  */
 import { useCallback, useEffect, useState } from 'react'
 import { SettingsSnapshot } from '../../shared/ipc-channels'
-import { Moon, VolumeX, ChevronRight, X, Rocket } from '../shared/icons'
+import { Moon, VolumeX, ChevronRight, X, Rocket, Music, Volume2 } from '../shared/icons'
+import { listSoundPacks, setSoundConfig, playSound } from '../ball/sound'
 
 interface Props {
   onBack: () => void
 }
+
+/** 音色包选项（与 sound.ts PACKS 一致） */
+const SOUND_PACKS = listSoundPacks()
+
+/** 音色试听用事件音（切换包/拖滑块时播一次） */
+const PREVIEW_SOUND = 'done' as const
 
 /** 开关（按钮模拟） */
 function Toggle({ on, onChange, disabled }: { on: boolean; onChange: () => void; disabled?: boolean }) {
@@ -28,6 +35,8 @@ function Toggle({ on, onChange, disabled }: { on: boolean; onChange: () => void;
 export function Settings({ onBack }: Props) {
   const [snap, setSnap] = useState<SettingsSnapshot | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
+  /** 拖动中的临时音量（未提交）；null = 显示已保存值 */
+  const [localVolume, setLocalVolume] = useState<number | null>(null)
 
   const reload = useCallback(async () => {
     setSnap(await window.pupil.getSettings())
@@ -52,6 +61,27 @@ export function Settings({ onBack }: Props) {
   const toggleAutoLaunch = async (): Promise<void> => {
     if (!snap) return
     await window.pupil.setSettings({ autoLaunch: !snap.autoLaunch })
+    void reload()
+  }
+
+  /** 切换音色包：持久化 + 立即试听一声 */
+  const changeSoundPack = async (pack: string): Promise<void> => {
+    if (!snap) return
+    setSoundConfig(pack, snap.soundVolume)
+    playSound(PREVIEW_SOUND)
+    await window.pupil.setSettings({ soundPack: pack })
+    void reload()
+  }
+
+  /** 拖动音量滑块：本地即时试听（节流由 input 事件天然限频），change 时持久化 */
+  const previewVolume = (v: number): void => {
+    if (!snap) return
+    setSoundConfig(snap.soundPack, v)
+    setLocalVolume(v)
+    playSound(PREVIEW_SOUND)
+  }
+  const commitVolume = async (v: number): Promise<void> => {
+    await window.pupil.setSettings({ soundVolume: v })
     void reload()
   }
 
@@ -118,6 +148,47 @@ export function Settings({ onBack }: Props) {
                   </div>
                 </div>
                 <Toggle on={snap.muted} onChange={() => void toggleMuted()} />
+              </div>
+              <div className="setting-row">
+                <div className="setting-info">
+                  <Music size={16} />
+                  <div>
+                    <div className="setting-name">提示音音色</div>
+                    <div className="setting-desc">切换时自动试听一声</div>
+                  </div>
+                </div>
+                <select
+                  className="sound-select"
+                  value={snap.soundPack}
+                  onChange={(e) => void changeSoundPack(e.target.value)}
+                >
+                  {SOUND_PACKS.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="setting-row">
+                <div className="setting-info">
+                  <Volume2 size={16} />
+                  <div>
+                    <div className="setting-name">提示音音量</div>
+                    <div className="setting-desc">拖动即时试听</div>
+                  </div>
+                </div>
+                <input
+                  type="range"
+                  className="volume-slider"
+                  min={0}
+                  max={100}
+                  value={Math.round((localVolume ?? snap.soundVolume) * 100)}
+                  onChange={(e) => previewVolume(Number(e.target.value) / 100)}
+                  onMouseUp={(e) => void commitVolume(Number((e.target as HTMLInputElement).value) / 100)}
+                  onTouchEnd={(e) => void commitVolume(Number((e.target as HTMLInputElement).value) / 100)}
+                  onKeyUp={(e) => void commitVolume(Number((e.target as HTMLInputElement).value) / 100)}
+                  aria-label="提示音音量"
+                />
               </div>
               <div className="setting-row">
                 <div className="setting-info">

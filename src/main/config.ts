@@ -13,6 +13,10 @@ export interface AppConfig {
   dnd?: boolean
   /** 总静音 */
   muted?: boolean
+  /** 音色包 id（chime/wood/chip/alarm） */
+  soundPack?: string
+  /** 全局音量 0..1（默认 0.8；播放峰值 = 0.35 × 音量） */
+  soundVolume?: number
   /** 开机自启（默认关闭） */
   autoLaunch?: boolean
   /** 时间推断参数（毫秒） */

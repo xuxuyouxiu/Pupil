@@ -14,6 +14,7 @@ export {
   History, // 事件历史页签
   VolumeX, // 静音
   Volume2,
+  Music, // 提示音音色
   X, // 关闭
   ChevronRight,
   BellRing, // 重试提醒

@@ -13,6 +13,10 @@ export interface AdapterStatus {
 export interface SettingsSnapshot {
   dnd: boolean
   muted: boolean
+  /** 音色包 id（chime/wood/chip/alarm） */
+  soundPack: string
+  /** 全局音量 0..1 */
+  soundVolume: number
   /** 开机自启（打包版生效；dev 下可存偏好但不注册登录项） */
   autoLaunch: boolean
   timeoutThresholdMs: number

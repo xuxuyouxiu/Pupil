@@ -14,7 +14,7 @@ import {
 } from '../../shared/events'
 import { EyeSystem } from './EyeSystem'
 import { useSessions } from './use-sessions'
-import { playSound } from './sound'
+import { playSound, setSoundConfig } from './sound'
 
 const R = 24.5
 const CIRC = 2 * Math.PI * R
@@ -124,9 +124,12 @@ export function Ball() {
   const movedRef = useRef(false)
   const startRef = useRef({ x: 0, y: 0 })
 
-  // 主进程通知策略驱动的音效播放
+  // 主进程通知策略驱动的音效播放（指令携带最新音色包/音量，球窗无需额外广播通道）
   useEffect(() => {
-    const off = window.pupil.onSoundPlay(({ type }) => {
+    const off = window.pupil.onSoundPlay(({ type, pack, volume }) => {
+      if (pack !== undefined || volume !== undefined) {
+        setSoundConfig(pack ?? 'chime', volume ?? 0.8)
+      }
       playSound(type as never)
     })
     return off

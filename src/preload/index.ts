@@ -28,7 +28,13 @@ export interface PupilApi {
   openSettings(): Promise<void>
   /** 设置面板：查询/更新配置与 adapter 状态 */
   getSettings(): Promise<SettingsSnapshot>
-  setSettings(patch: { dnd?: boolean; muted?: boolean; autoLaunch?: boolean }): Promise<SettingsSnapshot>
+  setSettings(patch: {
+    dnd?: boolean
+    muted?: boolean
+    autoLaunch?: boolean
+    soundPack?: string
+    soundVolume?: number
+  }): Promise<SettingsSnapshot>
   setAdapterEnabled(id: string, enabled: boolean): Promise<boolean>
   installHooks(): Promise<boolean>
   uninstallHooks(): Promise<boolean>
@@ -38,8 +44,8 @@ export interface PupilApi {
   setPanelMode(mode: 'main' | 'settings'): void
   /** 退出应用 */
   quit(): void
-  /** 订阅音效播放指令（主进程按通知策略驱动） */
-  onSoundPlay(cb: (payload: { type: string }) => void): () => void
+  /** 订阅音效播放指令（主进程按通知策略驱动，携带最新音色包/音量） */
+  onSoundPlay(cb: (payload: { type: string; pack?: string; volume?: number }) => void): () => void
 }
 
 const api: PupilApi = {
@@ -72,7 +78,8 @@ const api: PupilApi = {
   setPanelMode: (mode) => ipcRenderer.send(IPC.panelMode, mode),
   quit: () => ipcRenderer.send(IPC.appQuit),
   onSoundPlay: (cb) => {
-    const listener = (_e: IpcRendererEvent, payload: { type: string }): void => cb(payload)
+    const listener = (_e: IpcRendererEvent, payload: { type: string; pack?: string; volume?: number }): void =>
+      cb(payload)
     ipcRenderer.on(IPC.soundPlay, listener)
     return () => ipcRenderer.removeListener(IPC.soundPlay, listener)
   }

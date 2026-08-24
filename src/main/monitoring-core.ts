@@ -162,6 +162,8 @@ export class MonitoringCore {
     return {
       dnd: this.dnd,
       muted: this.muted,
+      soundPack: this.config.get('soundPack') ?? 'chime',
+      soundVolume: this.config.get('soundVolume') ?? 0.8,
       autoLaunch: this.config.get('autoLaunch') ?? false,
       timeoutThresholdMs: this.config.get('timeoutThresholdMs') ?? 10 * 60 * 1000,
       disconnectThresholdMs: this.config.get('disconnectThresholdMs') ?? 30 * 1000,

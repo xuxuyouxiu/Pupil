@@ -29,7 +29,7 @@ function bootstrap(): void {
   const config = new ConfigStore()
   const core = new MonitoringCore(config)
   const windows = new WindowManager(config)
-  const notifier = new Notifier(() => windows.ballWindow)
+  const notifier = new Notifier(() => windows.ballWindow, config)
   const tray = new TrayManager(core, windows)
   const autoLaunch = new AutoLaunch(config)
 
@@ -95,10 +95,24 @@ function bootstrap(): void {
   ipcMain.handle(IPC.settingsGet, () => core.getSettingsSnapshot())
   ipcMain.handle(
     IPC.settingsSet,
-    (_e, patch: { dnd?: boolean; muted?: boolean; autoLaunch?: boolean }) => {
+    (
+      _e,
+      patch: {
+        dnd?: boolean
+        muted?: boolean
+        autoLaunch?: boolean
+        soundPack?: string
+        soundVolume?: number
+      }
+    ) => {
       if (patch.dnd !== undefined) core.setDnd(patch.dnd)
       if (patch.muted !== undefined) core.setMuted(patch.muted)
       if (patch.autoLaunch !== undefined) autoLaunch.set(patch.autoLaunch)
+      if (patch.soundPack !== undefined) config.set('soundPack', patch.soundPack)
+      if (patch.soundVolume !== undefined) {
+        const v = Math.min(1, Math.max(0, Number(patch.soundVolume)))
+        if (Number.isFinite(v)) config.set('soundVolume', v)
+      }
       return core.getSettingsSnapshot()
     }
   )

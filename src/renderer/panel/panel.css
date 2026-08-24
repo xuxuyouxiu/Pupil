@@ -500,6 +500,58 @@ body,
   color: var(--muted);
   font-size: 12px;
 }
+/* ---- 提示音设置（音色包下拉 + 音量滑块）---- */
+.sound-select {
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-warm);
+  color: var(--fg);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.sound-select:hover {
+  border-color: var(--accent);
+}
+.sound-select:focus-visible {
+  outline: 3px solid rgba(37, 99, 235, 0.4);
+  outline-offset: 0;
+}
+.sound-select option {
+  background: var(--bg);
+  color: var(--fg);
+}
+
+.volume-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 110px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+  outline-offset: 2px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.volume-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid #fff;
+  cursor: grab;
+}
+.volume-slider::-webkit-slider-thumb:active {
+  cursor: grabbing;
+}
+.volume-slider:focus-visible {
+  outline: 3px solid rgba(37, 99, 235, 0.4);
+}
+
 .history-empty-sub {
   font-size: 11px;
   opacity: 0.75;
