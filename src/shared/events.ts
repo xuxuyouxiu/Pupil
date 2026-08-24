@@ -63,6 +63,18 @@ export interface SessionView {
   pid?: number
 }
 
+/** 事件历史条目（事件历史页签用，由 SessionRegistry 环形缓冲投影） */
+export interface SessionHistoryItem {
+  key: string // agentType + ':' + sessionId
+  agentType: AgentType
+  sessionId: string
+  title?: string
+  eventType: AgentEventType
+  timestamp: number
+  toolName?: string
+  errorMessage?: string
+}
+
 /** 悬浮球展示态（UIUX 文档第 4 节六态系统 + 聚合态） */
 export type DisplayState =
   | 'initializing' // 加载中

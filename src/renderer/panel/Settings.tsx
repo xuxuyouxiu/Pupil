@@ -4,7 +4,7 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import { SettingsSnapshot } from '../../shared/ipc-channels'
-import { Moon, VolumeX, ChevronRight, X } from '../shared/icons'
+import { Moon, VolumeX, ChevronRight, X, Rocket } from '../shared/icons'
 
 interface Props {
   onBack: () => void
@@ -46,6 +46,12 @@ export function Settings({ onBack }: Props) {
   const toggleMuted = async (): Promise<void> => {
     if (!snap) return
     await window.pupil.setSettings({ muted: !snap.muted })
+    void reload()
+  }
+
+  const toggleAutoLaunch = async (): Promise<void> => {
+    if (!snap) return
+    await window.pupil.setSettings({ autoLaunch: !snap.autoLaunch })
     void reload()
   }
 
@@ -112,6 +118,18 @@ export function Settings({ onBack }: Props) {
                   </div>
                 </div>
                 <Toggle on={snap.muted} onChange={() => void toggleMuted()} />
+              </div>
+              <div className="setting-row">
+                <div className="setting-info">
+                  <Rocket size={16} />
+                  <div>
+                    <div className="setting-name">开机自启</div>
+                    <div className="setting-desc">
+                      {snap.autoLaunch ? '已开启，登录 Windows 后自动运行' : '登录后自动运行 Pupil'}
+                    </div>
+                  </div>
+                </div>
+                <Toggle on={snap.autoLaunch} onChange={() => void toggleAutoLaunch()} />
               </div>
             </section>
 

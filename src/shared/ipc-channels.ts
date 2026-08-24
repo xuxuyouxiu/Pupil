@@ -13,11 +13,16 @@ export interface AdapterStatus {
 export interface SettingsSnapshot {
   dnd: boolean
   muted: boolean
+  /** 开机自启（打包版生效；dev 下可存偏好但不注册登录项） */
+  autoLaunch: boolean
   timeoutThresholdMs: number
   disconnectThresholdMs: number
   hooksInstalled: boolean
   adapters: AdapterStatus[]
 }
+
+/** 事件历史条目（跨会话合并，时间倒序） */
+export type { SessionHistoryItem } from './events'
 
 export const IPC = {
   /** 主进程 -> renderer：全量会话快照 */
@@ -62,6 +67,10 @@ export const IPC = {
   /** renderer -> 主进程：安装/卸载 Claude Code hooks */
   hooksInstall: 'pupil:hooks:install',
   hooksUninstall: 'pupil:hooks:uninstall',
+  /** renderer -> 主进程：查询事件历史（环形缓冲投影，时间倒序） */
+  historyGet: 'pupil:history:get',
+  /** renderer -> 主进程：同步面板视图模式（main/settings，settings 失焦不自动收起） */
+  panelMode: 'pupil:panel:mode',
   /** renderer -> 主进程：退出应用 */
   appQuit: 'pupil:app:quit'
 } as const

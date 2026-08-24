@@ -7,6 +7,7 @@ import { SessionView, toDisplayState, DisplayState, DISPLAY_PRIORITY } from '../
 import { useSessions } from '../ball/use-sessions'
 import { SessionRow } from './SessionRow'
 import { Settings } from './Settings'
+import { EventHistory } from './EventHistory'
 import { Moon, Settings as SettingsIcon, Radar, History } from '../shared/icons'
 
 type Tab = 'sessions' | 'history'
@@ -58,9 +59,10 @@ export function Panel() {
     return off
   }, [])
 
-  if (showSettings) {
-    return <Settings onBack={() => setShowSettings(false)} />
-  }
+  // 视图模式同步到主进程：设置视图中途失焦不自动收起面板（P0 修复）
+  useEffect(() => {
+    window.pupil.setPanelMode(showSettings ? 'settings' : 'main')
+  }, [showSettings])
 
   const summary = useMemo(() => summarize(sessions), [sessions])
   const sorted = useMemo(
@@ -71,6 +73,10 @@ export function Panel() {
       ),
     [sessions]
   )
+
+  if (showSettings) {
+    return <Settings onBack={() => setShowSettings(false)} />
+  }
 
   return (
     <div className="panel">
@@ -106,9 +112,11 @@ export function Panel() {
         </div>
       </header>
 
-      {/* 会话列表 */}
+      {/* 会话列表 / 事件历史 */}
       <div className="panel-body">
-        {sorted.length === 0 ? (
+        {tab === 'history' ? (
+          <EventHistory />
+        ) : sorted.length === 0 ? (
           <div className="empty-state">
             <Radar size={32} strokeWidth={1.5} />
             <p className="empty-title">未检测到运行中的 Agent 会话</p>

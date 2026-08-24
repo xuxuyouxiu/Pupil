@@ -89,8 +89,9 @@ function readWholeFile(filePath: string): string {
 /**
  * 单行 -> 归一化事件序列。
  * 返回事件按时间语义排序；工具结果可能随 user 行一并出现。
+ * （导出供单元测试使用）
  */
-function mapLine(line: Record<string, unknown>): AgentEvent[] {
+export function mapLine(line: Record<string, unknown>): AgentEvent[] {
   const events: AgentEvent[] = []
   const sessionId = typeof line.sessionId === 'string' ? line.sessionId : ''
   if (!sessionId) return events

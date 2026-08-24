@@ -13,6 +13,12 @@ export class WindowManager {
   private ball: BrowserWindow | null = null
   private panel: BrowserWindow | null = null
   private panelHideTimer: NodeJS.Timeout | null = null
+  /**
+   * 面板当前视图模式：
+   * - 'main'：会话/历史列表，失焦 300ms 自动收起（Raycast 式防误触）
+   * - 'settings'：设置视图，含开关交互，失焦不自动收起（用户显式返回/关闭）
+   */
+  private panelMode: 'main' | 'settings' = 'main'
 
   constructor(private config: ConfigStore) {}
 
@@ -141,6 +147,7 @@ export class WindowManager {
     win.on('closed', () => {
       if (this.panelHideTimer) clearTimeout(this.panelHideTimer)
       this.panel = null
+      this.panelMode = 'main' // 重置视图模式，下次打开从主列表开始
     })
     this.panel = win
     return true
@@ -156,13 +163,27 @@ export class WindowManager {
     return true
   }
 
-  /** 面板失焦 300ms 后收起（防误触，Raycast 式行为） */
+  /** 面板失焦后收起；设置视图不自动收起（P0 修复：中途失焦误关） */
   private schedulePanelHide(): void {
+    if (this.panelMode === 'settings') return
     if (this.panelHideTimer) clearTimeout(this.panelHideTimer)
     this.panelHideTimer = setTimeout(() => {
       if (this.panel && !this.panel.isDestroyed()) this.panel.close()
       this.panelHideTimer = null
     }, 300)
+  }
+
+  /** renderer 切换面板视图模式（进入/退出设置视图时调用） */
+  setPanelMode(mode: 'main' | 'settings'): void {
+    this.panelMode = mode
+    // 进入设置时取消已排定的收起；回到主列表恢复防误触
+    if (mode === 'settings') {
+      if (this.panelHideTimer) {
+        clearTimeout(this.panelHideTimer)
+        this.panelHideTimer = null
+      }
+      this.panel?.focus()
+    }
   }
 
   cancelPanelHide(): void {

@@ -1,7 +1,7 @@
 # Pupil 项目进度记录
 
-> 最后更新：2026-08-24
-> 本文档记录 Pupil（开源多 Agent 桌面悬浮球监控工具）的开发进度、已完成功能与待办事项，作为团队协作与后续迭代的单一事实来源。设计决策详见 `docs/architecture.md`、需求详见 `docs/PRD.md`、UI 规范详见 `docs/uiux.md`。
+> 最后更新：2026-08-24（v0.2.0）
+> 本文档记录 Pupil（开源多 Agent 桌面悬浮球监控工具）的开发进度、已完成功能与待办事项，作为团队协作与后续迭代的单一事实来源。设计决策详见 `docs/architecture.md`、需求详见 `docs/PRD.md`、UI 规范详见 `docs/uiux.md`、变更明细见 `CHANGELOG.md`。
 
 ---
 
@@ -23,17 +23,18 @@
 | 应用骨架（Electron + React + TS） | ✅ 完成 | 主进程/渲染层/preload 三层 + 打包管线 |
 | 悬浮球（球体 + 精灵眼 + 状态环） | ✅ 完成 | 六态表情 + 动画 + 自定义拖动 |
 | 详情面板（会话列表） | ✅ 完成 | 顶栏汇总 + 会话行 + 跳转窗口 |
-| 设置面板 | ✅ 完成 | 面板内视图（通知/adapter 开关/hooks 管理） |
-| 数据接入层（5 个 adapter） | ✅ 完成 | 通道 A/B/C 全部落地 |
-| 核心逻辑（状态机/推断/通知规则） | ✅ 完成 | 纯函数，无 Electron 依赖 |
-| 通知系统（音效 + Toast） | ✅ 完成 | Web Audio 合成音效 + 系统通知 |
-| 窗口激活（跳转会话窗口） | ✅ 完成 | koffi FFI 直调 user32 |
+| 设置面板 | ✅ 完成 | 面板内视图（通知/自启/adapter 开关/hooks 管理） |
+| 数据接入层（5 个 adapter） | ✅ 完成 | 通道 A/B/C 全部落地；Codex 补齐 rollout jsonl tail |
+| 核心逻辑（状态机/推断/通知规则） | ✅ 完成 | 纯函数，无 Electron 依赖；39 个单元测试全绿 |
+| 通知系统（音效 + Toast） | ✅ 完成 | Web Audio 合成音效 + 系统通知；完成提醒 bug 已修 |
+| 窗口激活（跳转会话窗口） | ✅ 完成 | koffi FFI 直调 user32；Toast 点击也走此链路 |
 | 系统托盘 | ✅ 完成 | 菜单 + 勿扰切换 |
-| 事件历史页签 | ⬜ 空壳 | 底部页签已就位，内容未实现 |
-| 开机自启（autoLaunch） | ⬜ 未实现 | config 有字段，无逻辑 |
-| 打包（electron-builder） | ⬜ 未配置 | 依赖已装，缺 build 配置块 |
-| 单元测试 | ⬜ 未写 | 状态机等纯函数可测 |
-| CLI 全局安装 | ⬜ 未做 | 目前是 `scripts/pupil-send.mjs` |
+| 事件历史页签 | ✅ 完成（v0.2.0） | 跨会话时间线，环形缓冲投影，3s 轮询 |
+| 开机自启（autoLaunch） | ✅ 完成（v0.2.0） | setLoginItemSettings + 设置开关；dev 只存偏好 |
+| 打包（electron-builder） | ✅ 完成（v0.2.0） | NSIS + portable x64 产出验证通过；`npm run dist` |
+| CLI 随应用分发 | ✅ 完成（v0.2.0） | resources/cli/ + %LOCALAPPDATA%/Pupil/bin/pupil.cmd shim |
+| 单元测试 | ✅ 完成（v0.2.0） | vitest，39 用例：状态机/推断/规则/三个映射函数 |
+| git 版本管理 | ✅ 完成（v0.2.0） | 仓库已初始化（main 分支），基线 + 功能提交 |
 
 ---
 
@@ -83,24 +84,17 @@
 
 ## 四、待办事项
 
-### P0（下一步优先）
-1. **打包配置**：补 `package.json` 的 `build` 配置块（appId、win nsis/portable 目标、图标、图标资源），产出可分发安装包
-2. **设置视图失焦优化**：面板目前「失焦 300ms 关闭」，设置视图中途失焦会被关，需对设置态做例外（不自动关或延长）
-
 ### P1（核心体验完善）
-3. **事件历史页签**：实现会话事件时间线展示（环形缓冲最近 1000 条/会话，架构文档 3.6 节）
-4. **开机自启**：实现 `autoLaunch`（`app.setLoginItemSettings`），并接入设置面板
-5. **CLI 全局安装**：把 `pupil send` 打包成可执行命令（npm bin / 独立 exe），随应用分发
-6. **单元测试**：状态机、推断引擎、事件映射（`hook-payload-map`、各 adapter 的 `mapLine`）等纯函数
-7. **Codex rollout jsonl 路径**：补全经典 CLI 的 jsonl tail（当前只实现桌面版 sqlite）
+1. **性能指标验证（打包版）**：dev 模式实测 ~296MB / 空闲 CPU 增量 ~1.7%，需用打包版复测确认 <100MB / <1% 达标；超标则考虑合并渲染进程或减动画
+2. **独立设置窗口**：从面板内视图升级为独立窗口（架构 P1）
+3. **Codex rollout 实测校准**：rollout jsonl 行格式按官方文档实现，本机无经典 CLI 数据，需在装有 Codex CLI 的环境回归
+4. **CLI shim 加入 PATH**：`pupil.cmd` 已落 `%LOCALAPPDATA%/Pupil/bin`，可选把该目录注册进用户 PATH 免 cd
 
 ### P2（打磨 / 增强）
-8. **独立设置窗口**：从面板内视图升级为独立窗口（架构 P1）
-9. **通知跳转精化**：Toast 点击精准跳转到对应会话窗口（当前仅聚焦球/面板）
-10. **窗口跳转 pid 匹配**：改进 hook/日志侧宿主终端 pid 的获取链路（架构 OPEN-DECISION #2）
-11. **性能指标验证**：实测内存/CPU，确认达标（<100MB / <1%）
-12. **第三方 adapter 动态加载**：`%APPDATA%/pupil/adapters/*.js` 约定（架构 OPEN-DECISION #6，deferred）
-13. **Hermes webhook**：调研 `hermes webhook` 是否可替代 sqlite 轮询（架构 OPEN-DECISION #7）
+5. **通知跳转精化**：Toast 点击已能跳会话窗口；进一步做「点击历史行跳转」与 pid 匹配链路改进（架构 OPEN-DECISION #2）
+6. **第三方 adapter 动态加载**：`%APPDATA%/pupil/adapters/*.js` 约定（架构 OPEN-DECISION #6，deferred）
+7. **Hermes webhook**：调研 `hermes webhook` 是否可替代 sqlite 轮询（架构 OPEN-DECISION #7）
+8. **事件历史持久化**：当前环形缓冲仅内存，重启丢失；如需复盘跨天数据再考虑落盘
 
 ---
 
@@ -113,8 +107,10 @@
 | PowerShell hook 脚本 | 必须纯 ASCII + 写文件加 UTF-8 BOM，否则 Windows PowerShell 5.1 按 ANSI 误读中文破坏语法 |
 | 本机沙箱跑 Electron | 注入 `ELECTRON_RUN_AS_NODE=1`（检查存在性），需 `unset` 彻底移除（`env -u` 会吞 stdout）；需 `no-sandbox` + 关硬件加速 |
 | 孤儿进程 | TaskStop 杀 npm 父进程会留 electron.exe 孤儿，需 `Stop-Process -Name electron` 补刀 |
-| Claude Code jsonl 格式 | 顶层 type 只有 user/assistant/queue-operation 等；tool_use/tool_result/thinking 是 `message.content` 内嵌块，非顶层行 |
-| Hermes/Codex 时间戳 | Hermes 用 Unix 秒（REAL）；Codex 用毫秒（INTEGER），注意换算 |
+| Claude Code jsonl 格式 | 顶层 type 只有 user/assistant/queue-operation 等；tool_use/tool_result/thinking 是 `message.content` 内嵌块，非顶层行；`stop_reason` 在 `message.stop_reason` 不在顶层 |
+| Hermes/Codex 时间戳 | Hermes 用 Unix 秒（REAL）；Codex 桌面版 sqlite 用毫秒（INTEGER），rollout jsonl 用 ISO 字符串，注意换算 |
+| 通知策略与视图状态 | 展示态必须按"事件语义"算而非"事件应用后"的会话状态——turn_completed 应用后视图已 idle，按视图算完成提醒会被吞（v0.2.0 修复的典型坑） |
+| electron-builder 资源路径 | 打包后 `__dirname` 相对路径失效；统一走 `resourcePath()`（dev=项目 resources/，打包=`process.resourcesPath/`） |
 
 ---
 

@@ -2,6 +2,7 @@
  * Notifier —— 通知策略执行器（主进程侧）
  * - 音效：通过 IPC 通知球窗 renderer 用 Web Audio 合成播放（HTML5 Audio 通道）
  * - 系统通知：Electron Notification（Windows Toast），silent: true 避免系统提示音与自定义音效叠加
+ * - 点击 Toast：优先跳转对应会话窗口，找不到则回退聚焦悬浮球
  */
 import { Notification, BrowserWindow } from 'electron'
 import { resolveStrategy } from '../core/notify-rules'
@@ -17,14 +18,24 @@ const SOUND_BY_STATE: Record<string, string> = {
   offline: 'offline'
 }
 
+/** Toast 点击行为回调（由 main 注入：激活会话对应终端窗口） */
+export type ToastClickHandler = (view: SessionView) => void
+
 export class Notifier {
+  private onClick: ToastClickHandler | null = null
+
   constructor(private getBall: () => BrowserWindow | null) {}
+
+  /** 注入 Toast 点击处理（依赖 WindowManager 与 win32 激活链路） */
+  setClickHandler(fn: ToastClickHandler): void {
+    this.onClick = fn
+  }
 
   /** MonitoringCore 注入的 NotifyExecutor */
   readonly execute = (
     strategy: ReturnType<typeof resolveStrategy>,
     _event: AgentEvent,
-    _view?: SessionView
+    view?: SessionView
   ): void => {
     // 音效：驱动球窗 renderer 播放
     if (strategy.sound) {
@@ -45,8 +56,11 @@ export class Notifier {
         icon: this.iconPath()
       })
       n.on('click', () => {
-        // 点击通知跳转对应会话窗口（MVP：聚焦球/面板；窗口匹配 Phase 2）
-        this.getBall()?.show()
+        if (view && this.onClick) {
+          this.onClick(view)
+        } else {
+          this.getBall()?.show() // 回退：至少把球带到眼前
+        }
       })
       n.show()
     }

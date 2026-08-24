@@ -82,7 +82,9 @@ export function resolveStrategy(
   view: SessionView | undefined,
   opts: { dnd?: boolean; muted?: boolean } = {}
 ): NotifyStrategy {
-  const display = view ? toDisplayState(view) : eventToDisplayState(event) ?? 'idle'
+  // 展示态以"事件语义"为准：turn_completed 应用后视图已变 idle，
+  // 若按视图状态算，完成提醒（音效+Toast）会被静默吞掉
+  const display = eventToDisplayState(event) ?? (view ? toDisplayState(view) : 'idle')
 
   // 视觉通道永远保留；dnd/静音只影响 sound 与 toast
   const strategy: NotifyStrategy = {

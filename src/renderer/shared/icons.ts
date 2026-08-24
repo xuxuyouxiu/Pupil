@@ -17,5 +17,6 @@ export {
   X, // 关闭
   ChevronRight,
   BellRing, // 重试提醒
-  WifiOff // 断连
+  WifiOff, // 断连
+  Rocket // 开机自启
 } from 'lucide-react'

@@ -2,7 +2,7 @@
  * Preload —— 通过 contextBridge 向 renderer 暴露类型安全 API
  */
 import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron'
-import { SessionView } from '../shared/events'
+import { SessionView, SessionHistoryItem } from '../shared/events'
 import { IPC, SettingsSnapshot } from '../shared/ipc-channels'
 
 export interface PupilApi {
@@ -28,10 +28,14 @@ export interface PupilApi {
   openSettings(): Promise<void>
   /** 设置面板：查询/更新配置与 adapter 状态 */
   getSettings(): Promise<SettingsSnapshot>
-  setSettings(patch: { dnd?: boolean; muted?: boolean }): Promise<SettingsSnapshot>
+  setSettings(patch: { dnd?: boolean; muted?: boolean; autoLaunch?: boolean }): Promise<SettingsSnapshot>
   setAdapterEnabled(id: string, enabled: boolean): Promise<boolean>
   installHooks(): Promise<boolean>
   uninstallHooks(): Promise<boolean>
+  /** 事件历史页签：跨会话合并时间线（时间倒序） */
+  getHistory(limit?: number): Promise<SessionHistoryItem[]>
+  /** 同步面板视图模式：设置视图下主进程不因失焦自动收起面板 */
+  setPanelMode(mode: 'main' | 'settings'): void
   /** 退出应用 */
   quit(): void
   /** 订阅音效播放指令（主进程按通知策略驱动） */
@@ -64,6 +68,8 @@ const api: PupilApi = {
   setAdapterEnabled: (id, enabled) => ipcRenderer.invoke(IPC.adapterSetEnabled, id, enabled),
   installHooks: () => ipcRenderer.invoke(IPC.hooksInstall),
   uninstallHooks: () => ipcRenderer.invoke(IPC.hooksUninstall),
+  getHistory: (limit) => ipcRenderer.invoke(IPC.historyGet, limit),
+  setPanelMode: (mode) => ipcRenderer.send(IPC.panelMode, mode),
   quit: () => ipcRenderer.send(IPC.appQuit),
   onSoundPlay: (cb) => {
     const listener = (_e: IpcRendererEvent, payload: { type: string }): void => cb(payload)

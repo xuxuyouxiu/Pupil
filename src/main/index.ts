@@ -7,6 +7,8 @@ import { MonitoringCore } from './monitoring-core'
 import { WindowManager } from './window-manager'
 import { TrayManager } from './tray'
 import { Notifier } from './notifier'
+import { AutoLaunch } from './auto-launch'
+import { ensureCliShim } from './paths'
 import { activateSessionWindow } from '../integrations/win32-window'
 import { IPC } from '../shared/ipc-channels'
 
@@ -29,8 +31,18 @@ function bootstrap(): void {
   const windows = new WindowManager(config)
   const notifier = new Notifier(() => windows.ballWindow)
   const tray = new TrayManager(core, windows)
+  const autoLaunch = new AutoLaunch(config)
 
   core.setNotifyExecutor(notifier.execute)
+  // Toast 点击：精准跳转对应会话窗口（P2；失败由 activateSessionWindow 内部降级）
+  notifier.setClickHandler((view) => {
+    void activateSessionWindow(view)
+  })
+
+  // 开机自启：启动时按持久化偏好同步一次（用户在系统侧手动改掉则以此处为准恢复）
+  if (config.get('autoLaunch') && app.isPackaged) {
+    autoLaunch.set(true)
+  }
 
   // 快照广播：订阅者（球窗/面板窗）
   core.subscribe((views) => {
@@ -81,22 +93,36 @@ function bootstrap(): void {
     windows.openPanel() // MVP：设置并入面板（独立设置窗口 P1）
   })
   ipcMain.handle(IPC.settingsGet, () => core.getSettingsSnapshot())
-  ipcMain.handle(IPC.settingsSet, (_e, patch: { dnd?: boolean; muted?: boolean }) => {
-    if (patch.dnd !== undefined) core.setDnd(patch.dnd)
-    if (patch.muted !== undefined) core.setMuted(patch.muted)
-    return core.getSettingsSnapshot()
-  })
+  ipcMain.handle(
+    IPC.settingsSet,
+    (_e, patch: { dnd?: boolean; muted?: boolean; autoLaunch?: boolean }) => {
+      if (patch.dnd !== undefined) core.setDnd(patch.dnd)
+      if (patch.muted !== undefined) core.setMuted(patch.muted)
+      if (patch.autoLaunch !== undefined) autoLaunch.set(patch.autoLaunch)
+      return core.getSettingsSnapshot()
+    }
+  )
   ipcMain.handle(IPC.adapterSetEnabled, (_e, id: string, enabled: boolean) =>
     core.setAdapterEnabled(id, enabled)
   )
   ipcMain.handle(IPC.hooksInstall, () => core.installHooks())
   ipcMain.handle(IPC.hooksUninstall, () => core.uninstallHooks())
+  ipcMain.handle(IPC.historyGet, (_e, limit?: number) =>
+    core.history(typeof limit === 'number' ? limit : undefined)
+  )
+  // 面板视图模式同步（设置视图失焦不自动收起）
+  ipcMain.on(IPC.panelMode, (_e, mode: 'main' | 'settings') => {
+    windows.setPanelMode(mode)
+  })
   ipcMain.on(IPC.appQuit, () => app.quit())
 
   app.whenReady().then(() => {
     windows.createBallWindow()
     tray.create()
     core.start()
+    // 打包版：写 %LOCALAPPDATA%/Pupil/bin/pupil.cmd（pupil send 命令，无需系统 Node）
+    const binDir = ensureCliShim()
+    if (binDir) console.log(`[cli] pupil.cmd ready at ${binDir}`)
   })
 
   // 单实例：再次启动时聚焦球窗

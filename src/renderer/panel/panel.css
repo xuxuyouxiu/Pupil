@@ -403,3 +403,93 @@ body {
   opacity: 0.5;
   cursor: wait;
 }
+
+/* ---- 事件历史页签 ---- */
+.history-list {
+  list-style: none;
+}
+.history-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.history-time {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--muted);
+  flex-shrink: 0;
+  width: 52px;
+}
+.ev-icon {
+  flex-shrink: 0;
+}
+.ev-icon-error {
+  color: var(--state-error);
+}
+.ev-icon-waiting {
+  color: var(--state-waiting);
+}
+.ev-icon-offline {
+  color: var(--state-offline);
+}
+.history-main {
+  flex: 1;
+  min-width: 0;
+}
+.history-title {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.history-name {
+  font-size: 12px;
+  font-weight: 510;
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.history-desc {
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ev-running {
+  color: var(--state-running);
+}
+.ev-tool {
+  color: var(--accent);
+}
+.ev-done {
+  color: var(--state-done);
+}
+.ev-waiting {
+  color: var(--state-waiting);
+}
+.ev-error {
+  color: var(--state-error);
+}
+.ev-offline {
+  color: var(--state-offline);
+}
+.ev-idle,
+.ev-muted {
+  color: var(--muted);
+}
+.history-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 48px 20px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.history-empty-sub {
+  font-size: 11px;
+  opacity: 0.75;
+}

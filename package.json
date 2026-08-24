@@ -1,6 +1,6 @@
 {
   "name": "pupil",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Pupil - 开源多 Agent 桌面悬浮球监控工具（Windows 优先）",
   "main": "out/main/index.js",
   "author": "Pupil Team",
@@ -11,7 +11,10 @@
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "start": "electron-vite preview",
+    "dist": "npm run typecheck && npm run test && electron-vite build && electron-builder --win nsis portable",
     "postinstall": "electron-builder install-app-deps"
   },
   "dependencies": {
@@ -29,11 +32,64 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "typescript": "^5.7.2",
-    "vite": "^5.4.11"
+    "vite": "^5.4.11",
+    "vitest": "^2.1.9"
   },
   "allowScripts": {
     "electron@33.4.11": true,
     "esbuild@0.21.5": true,
     "koffi@2.16.3": true
+  },
+  "build": {
+    "appId": "dev.pupil.app",
+    "productName": "Pupil",
+    "copyright": "Copyright © 2026 Pupil Team",
+    "directories": {
+      "output": "release",
+      "buildResources": "resources"
+    },
+    "files": [
+      "out/**",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/icon.ico",
+        "to": "icon.ico"
+      },
+      {
+        "from": "scripts/pupil-send.mjs",
+        "to": "cli/pupil-send.mjs"
+      }
+    ],
+    "win": {
+      "icon": "resources/icon.ico",
+      "artifactName": "${productName}-${version}-${arch}.${ext}",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Pupil"
+    },
+    "portable": {
+      "artifactName": "${productName}-${version}-portable.${ext}"
+    }
   }
 }

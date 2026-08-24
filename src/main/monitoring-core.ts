@@ -16,7 +16,7 @@ import { HooksInstaller, buildHookCommand } from '../adapters/claude-code/hooks-
 import { SessionRegistry } from '../core/session-registry'
 import { InferenceEngine } from '../core/inference'
 import { resolveStrategy } from '../core/notify-rules'
-import { AgentEvent, SessionView } from '../shared/events'
+import { AgentEvent, SessionHistoryItem, SessionView } from '../shared/events'
 import { SettingsSnapshot, AdapterStatus } from '../shared/ipc-channels'
 import { ConfigStore } from './config'
 
@@ -156,11 +156,17 @@ export class MonitoringCore {
     return {
       dnd: this.dnd,
       muted: this.muted,
+      autoLaunch: this.config.get('autoLaunch') ?? false,
       timeoutThresholdMs: this.config.get('timeoutThresholdMs') ?? 10 * 60 * 1000,
       disconnectThresholdMs: this.config.get('disconnectThresholdMs') ?? 30 * 1000,
       hooksInstalled: this.hooksInstaller.isInstalled(),
       adapters
     }
+  }
+
+  /** 事件历史（跨会话合并时间线，倒序） */
+  history(limit?: number): SessionHistoryItem[] {
+    return this.registry.history(limit)
   }
 
   /** 运行时启停 adapter，并把状态持久化到 config */

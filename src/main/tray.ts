@@ -2,9 +2,9 @@
  * 系统托盘 —— 显示/隐藏悬浮球、勿扰、设置、退出
  */
 import { Menu, Tray, nativeImage, app } from 'electron'
-import { join } from 'path'
 import { MonitoringCore } from './monitoring-core'
 import { WindowManager } from './window-manager'
+import { resourcePath } from './paths'
 
 export class TrayManager {
   private tray: Tray | null = null
@@ -15,7 +15,7 @@ export class TrayManager {
   ) {}
 
   create(): void {
-    const icon = nativeImage.createFromPath(join(__dirname, '../../resources/icon.ico'))
+    const icon = nativeImage.createFromPath(resourcePath('icon.ico'))
     this.tray = new Tray(icon.isEmpty() ? nativeImage.createEmpty() : icon)
     this.tray.setToolTip('Pupil — Agent 状态监控')
     this.tray.setContextMenu(this.buildMenu())

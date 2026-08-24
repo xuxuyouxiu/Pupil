@@ -7,6 +7,7 @@ import {
   AgentEvent,
   AgentType,
   SessionFlags,
+  SessionHistoryItem,
   SessionState,
   SessionView,
   sessionKey
@@ -149,6 +150,30 @@ export class SessionRegistry {
       return b.lastEventAt - a.lastEventAt
     })
     return views
+  }
+
+  /**
+   * 事件历史投影：全部会话的环形缓冲合并为一条时间线（时间倒序）。
+   * @param limit 最多返回条数（默认取环形缓冲总量，避免面板一次渲染过重）
+   */
+  history(limit: number = EVENT_RING_BUFFER_SIZE * 4): SessionHistoryItem[] {
+    const items: SessionHistoryItem[] = []
+    for (const rec of this.sessions.values()) {
+      for (const e of rec.events) {
+        items.push({
+          key: rec.key,
+          agentType: rec.agentType,
+          sessionId: rec.sessionId,
+          title: rec.title,
+          eventType: e.eventType,
+          timestamp: e.timestamp,
+          toolName: e.payload?.toolName,
+          errorMessage: e.payload?.errorMessage
+        })
+      }
+    }
+    items.sort((a, b) => b.timestamp - a.timestamp)
+    return items.slice(0, Math.max(1, limit))
   }
 
   get(key: string): SessionView | undefined {

@@ -29,6 +29,9 @@ export function transitionState(
   current: SessionState,
   event: AgentEventType
 ): SessionState {
+  // 新会话开始总是重置（含从 error 吸收态恢复，避免出错后会话重启仍卡在错误态）
+  if (event === 'session_started') return 'idle'
+
   // 错误态是"吸收态"：除非有恢复事件，否则保持 error
   if (current === 'error' && event !== 'error') {
     const recovery = ERROR_RECOVERY[event]
@@ -39,8 +42,6 @@ export function transitionState(
   }
 
   switch (event) {
-    case 'session_started':
-      return 'idle'
     case 'turn_started':
     case 'thinking':
       return 'thinking'
