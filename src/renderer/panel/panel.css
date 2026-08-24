@@ -11,6 +11,8 @@ body {
   flex-direction: column;
   width: 360px;
   max-height: 480px;
+  /* 实色兜底在前，color-mix 支持时用 100% 不透明暗底（Win10 透明窗口易发虚，面板不再半透明） */
+  background: var(--bg);
   background: color-mix(in srgb, var(--bg) var(--panel-alpha), transparent);
   border: 1px solid var(--border);
   border-radius: 8px;

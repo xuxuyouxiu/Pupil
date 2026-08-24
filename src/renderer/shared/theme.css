@@ -31,7 +31,7 @@
   --orb-idle-alpha: 0.55;
   --orb-hover-alpha: 0.95;
   --orb-active-alpha: 0.92; /* 有活跃状态（运行/等待/错误/超时等）时更醒目 */
-  --panel-alpha: 0.96;
+  --panel-alpha: 1; /* 面板全不透明：半透明底在浅色壁纸上内容看不清（用户反馈） */
 
   /* 精灵眼球体 Token */
   --orb-body: #0d1117;
