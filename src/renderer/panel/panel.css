@@ -1,0 +1,405 @@
+/* 详情面板样式 —— 360px，暗色高密度（Linear 语汇） */
+@import '../shared/theme.css';
+
+html,
+body {
+  background: transparent !important;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  width: 360px;
+  max-height: 480px;
+  background: color-mix(in srgb, var(--bg) var(--panel-alpha), transparent);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+  font-size: 13px;
+  color: var(--fg);
+}
+
+/* ---- 顶栏 ---- */
+.panel-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 44px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border-soft);
+  flex-shrink: 0;
+}
+.panel-top.dnd {
+  background: var(--surface-warm);
+}
+
+.summary {
+  display: flex;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--fg-2);
+}
+.summary-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+.summary-empty {
+  color: var(--muted);
+}
+
+.dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.dot-running {
+  background: var(--state-running);
+}
+.dot-waiting {
+  background: var(--state-waiting);
+}
+.dot-done {
+  background: var(--state-done);
+}
+.dot-error {
+  background: var(--state-error);
+}
+.dot-timeout {
+  background: var(--state-timeout);
+}
+.dot-offline {
+  background: var(--state-offline);
+}
+
+.top-actions {
+  display: flex;
+  gap: 2px;
+}
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 120ms ease-out, color 120ms ease-out;
+}
+.icon-btn:hover {
+  background: var(--surface-warm);
+  color: var(--fg);
+}
+.icon-btn.active {
+  color: var(--state-waiting);
+}
+.icon-btn:focus-visible {
+  outline: 3px solid rgba(37, 99, 235, 0.4);
+  outline-offset: 0;
+}
+
+/* ---- 会话列表 ---- */
+.panel-body {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 120px;
+}
+.session-list {
+  list-style: none;
+}
+
+.session-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 40px;
+  padding: 0 12px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border-soft);
+  transition: background 120ms ease-out;
+}
+.session-row:hover {
+  background: var(--surface-warm);
+}
+
+.row-main {
+  flex: 1;
+  min-width: 0;
+}
+.row-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.session-name {
+  font-size: 13px;
+  font-weight: 510;
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.agent-tag {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.row-sub {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.row-sub-warn {
+  color: var(--state-error);
+}
+
+.duration {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.jump-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+  opacity: 0;
+  flex-shrink: 0;
+  transition: opacity 120ms ease-out, background 120ms ease-out;
+}
+.jump-btn.visible {
+  opacity: 1;
+}
+.jump-btn:hover {
+  background: rgba(37, 99, 235, 0.14);
+}
+.jump-btn:focus-visible {
+  outline: 3px solid rgba(37, 99, 235, 0.4);
+}
+
+/* ---- 空状态 ---- */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 40px 20px;
+  color: var(--muted);
+  text-align: center;
+}.empty-title {
+  font-size: 13px;
+  color: var(--fg-2);
+}
+.empty-sub {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.empty-cta {
+  margin-top: 10px;
+  padding: 7px 16px;
+  border: none;
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--accent-on);
+  font-size: 12px;
+  cursor: pointer;
+}
+.empty-cta:hover {
+  filter: brightness(1.1);
+}
+
+/* ---- 底部页签 ---- */
+.panel-tabs {
+  display: flex;
+  height: 36px;
+  border-top: 1px solid var(--border-soft);
+  flex-shrink: 0;
+}
+.tab {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+  transition: color 120ms ease-out, background 120ms ease-out;
+}
+.tab:hover {
+  color: var(--fg);
+}
+.tab.active {
+  color: var(--fg);
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+/* 滚动条（暗色克制） */
+.panel-body::-webkit-scrollbar {
+  width: 6px;
+}
+.panel-body::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+.panel-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ---- 设置视图 ---- */
+.settings-title {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 510;
+}
+
+.settings-body {
+  padding: 8px 12px 12px;
+}
+
+.settings-loading {
+  padding: 32px 0;
+  text-align: center;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.settings-section {
+  margin-bottom: 14px;
+}
+
+.settings-heading {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 6px 2px;
+}
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 4px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.setting-row:last-child {
+  border-bottom: none;
+}
+
+.setting-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  color: var(--fg-2);
+}
+.setting-name {
+  font-size: 13px;
+  color: var(--fg);
+}
+.setting-desc {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 1px;
+}
+
+.adapter-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--state-offline);
+  flex-shrink: 0;
+}
+.adapter-dot.run {
+  background: var(--state-done);
+}
+.adapter-dot.off {
+  background: var(--meta);
+}
+
+/* 开关 */
+.toggle {
+  position: relative;
+  width: 36px;
+  height: 20px;
+  border: none;
+  border-radius: 10px;
+  background: var(--border);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 140ms ease-out;
+}
+.toggle.on {
+  background: var(--accent);
+}
+.toggle.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.toggle-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 140ms ease-out;
+}
+.toggle.on .toggle-knob {
+  transform: translateX(16px);
+}
+
+/* hooks 按钮 */
+.hooks-btn {
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-warm);
+  color: var(--fg);
+  font-size: 12px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.hooks-btn:hover {
+  border-color: var(--accent);
+}
+.hooks-btn.danger {
+  color: var(--state-error);
+}
+.hooks-btn.danger:hover {
+  border-color: var(--state-error);
+}
+.hooks-btn:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}

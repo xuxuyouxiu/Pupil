@@ -1,0 +1,215 @@
+/**
+ * WindowManager —— 球窗口 + 面板窗口生命周期
+ * 架构文档第 5 节：单应用两个 BrowserWindow；面板按需创建、失焦销毁（省内存）
+ */
+import { BrowserWindow, screen, Display } from 'electron'
+import { join } from 'path'
+import { BALL_SIZE, PANEL_MAX_HEIGHT, PANEL_WIDTH } from '../shared/constants'
+import { ConfigStore } from './config'
+
+const isDev = process.env['ELECTRON_RENDERER_URL'] !== undefined
+
+export class WindowManager {
+  private ball: BrowserWindow | null = null
+  private panel: BrowserWindow | null = null
+  private panelHideTimer: NodeJS.Timeout | null = null
+
+  constructor(private config: ConfigStore) {}
+
+  /** 创建球窗口（常驻） */
+  createBallWindow(): BrowserWindow {
+    const saved = this.config.get('ballPosition')
+    const display = screen.getPrimaryDisplay()
+    const { height: sh } = display.workAreaSize
+    // 默认：主屏左侧垂直居中
+    const x = saved?.x ?? Math.round(display.workArea.x + 16)
+    const y = saved?.y ?? Math.round(display.workArea.y + (sh - BALL_SIZE) / 2)
+
+    const win = new BrowserWindow({
+      x,
+      y,
+      width: BALL_SIZE,
+      height: BALL_SIZE,
+      show: false,
+      frame: false,
+      transparent: true,
+      resizable: false,
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      hasShadow: false,
+      backgroundColor: '#00000000',
+      webPreferences: {
+        preload: join(__dirname, '../preload/index.js'),
+        backgroundThrottling: false, // 保证球体动画常驻不冻结
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: false
+      }
+    })
+
+    win.setAlwaysOnTop(true, 'screen-saver')
+    // 透明窗口不抢焦点（点击时才交互）
+    win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+
+    this.loadRenderer(win, 'ball/index.html')
+
+    win.once('ready-to-show', () => win.show())
+    // 拖动后记忆位置（节流：moved 事件已足够低频）
+    win.on('moved', () => {
+      const pos = win.getPosition()
+      this.config.set('ballPosition', { x: pos[0], y: pos[1] })
+    })
+    win.on('closed', () => {
+      this.ball = null
+    })
+
+    this.ball = win
+    return win
+  }
+
+  get ballWindow(): BrowserWindow | null {
+    return this.ball
+  }
+
+  /**
+   * 自定义拖动（替代 -webkit-app-region: drag）：
+   * delta 由 renderer 用 pointer 事件的 screenX/Y 差值计算（统一 DIP 坐标），
+   * 主进程只做 win0 + delta，避免 getCursorScreenPoint 坐标源不一致。
+   */
+  private dragState: { win: { x: number; y: number } } | null = null
+
+  startDrag(): void {
+    const win = this.ball
+    if (!win || win.isDestroyed()) return
+    const [wx, wy] = win.getPosition()
+    this.dragState = { win: { x: wx, y: wy } }
+  }
+
+  moveDrag(dx: number, dy: number): void {
+    const win = this.ball
+    if (!win || !this.dragState) return
+    if (dx === 0 && dy === 0) return
+    win.setPosition(this.dragState.win.x + dx, this.dragState.win.y + dy)
+  }
+
+  endDrag(): void {
+    if (!this.dragState) return
+    this.dragState = null
+    const win = this.ball
+    if (win && !win.isDestroyed()) {
+      const [x, y] = win.getPosition()
+      this.config.set('ballPosition', { x, y })
+    }
+  }
+
+  /** 打开面板（若已存在则聚焦）；返回是否新建 */
+  openPanel(): boolean {
+    if (this.panel && !this.panel.isDestroyed()) {
+      this.panel.show()
+      this.panel.focus()
+      return false
+    }
+    const ball = this.ball
+    const anchor = ball ? ball.getBounds() : { x: 0, y: 0, width: BALL_SIZE, height: BALL_SIZE }
+    const { x: px, y: py } = this.clampPanelPosition(anchor)
+
+    const win = new BrowserWindow({
+      x: px,
+      y: py,
+      width: PANEL_WIDTH,
+      height: Math.min(PANEL_MAX_HEIGHT, 420),
+      show: false,
+      frame: false,
+      transparent: true,
+      resizable: false,
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      hasShadow: false,
+      backgroundColor: '#00000000',
+      webPreferences: {
+        preload: join(__dirname, '../preload/index.js'),
+        backgroundThrottling: false,
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: false
+      }
+    })
+
+    this.loadRenderer(win, 'panel/index.html')
+    win.once('ready-to-show', () => win.show())
+    win.on('blur', () => this.schedulePanelHide())
+    win.on('closed', () => {
+      if (this.panelHideTimer) clearTimeout(this.panelHideTimer)
+      this.panel = null
+    })
+    this.panel = win
+    return true
+  }
+
+  /** 切换面板开合：返回切换后是否处于打开状态 */
+  togglePanel(): boolean {
+    if (this.panel && !this.panel.isDestroyed()) {
+      this.closePanel()
+      return false
+    }
+    this.openPanel()
+    return true
+  }
+
+  /** 面板失焦 300ms 后收起（防误触，Raycast 式行为） */
+  private schedulePanelHide(): void {
+    if (this.panelHideTimer) clearTimeout(this.panelHideTimer)
+    this.panelHideTimer = setTimeout(() => {
+      if (this.panel && !this.panel.isDestroyed()) this.panel.close()
+      this.panelHideTimer = null
+    }, 300)
+  }
+
+  cancelPanelHide(): void {
+    if (this.panelHideTimer) {
+      clearTimeout(this.panelHideTimer)
+      this.panelHideTimer = null
+    }
+  }
+
+  closePanel(): void {
+    if (this.panel && !this.panel.isDestroyed()) this.panel.close()
+  }
+
+  /** 面板位置：球右侧，保证不超出工作区 */
+  private clampPanelPosition(ball: { x: number; y: number; width: number; height: number }) {
+    const display = screen.getDisplayNearestPoint({
+      x: ball.x + ball.width / 2,
+      y: ball.y + ball.height / 2
+    })
+    const area = display.workArea
+    let x = ball.x + ball.width + 8
+    let y = ball.y
+    if (x + PANEL_WIDTH > area.x + area.width) {
+      x = ball.x - PANEL_WIDTH - 8 // 放不下则移到球左侧
+    }
+    if (y + 420 > area.y + area.height) {
+      y = area.y + area.height - 420
+    }
+    if (y < area.y) y = area.y
+    return { x: Math.round(x), y: Math.round(y) }
+  }
+
+  private loadRenderer(win: BrowserWindow, file: string): void {
+    if (isDev && process.env['ELECTRON_RENDERER_URL']) {
+      win.loadURL(`${process.env['ELECTRON_RENDERER_URL']}/${file}`)
+    } else {
+      win.loadFile(join(__dirname, `../renderer/${file}`))
+    }
+  }
+
+  destroyAll(): void {
+    this.closePanel()
+    this.ball?.destroy()
+  }
+}
+
+/** 从 display 对象取工作区（保留给后续多显示器逻辑） */
+export function workAreaOf(display: Display) {
+  return display.workArea
+}

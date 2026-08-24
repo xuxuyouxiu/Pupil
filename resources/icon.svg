@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <title>Pupil App Icon</title>
+  <desc>Floating ball with blue monitor ring and two minimal dot eyes</desc>
+
+  <!-- Background: flat dark rounded square -->
+  <rect width="512" height="512" rx="112" fill="#0A0C10"/>
+
+  <!-- Blue monitor ring (complete circle) -->
+  <circle cx="256" cy="256" r="186" fill="none" stroke="#378ADD" stroke-width="12"/>
+
+  <!-- Ball body -->
+  <circle cx="256" cy="256" r="156" fill="#0D1117"/>
+
+  <!-- Minimal dot eyes -->
+  <circle cx="210" cy="254" r="24" fill="#F0F6FC"/>
+  <circle cx="302" cy="254" r="24" fill="#F0F6FC"/>
+</svg>

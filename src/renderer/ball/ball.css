@@ -1,0 +1,197 @@
+/* 悬浮球样式 —— 56x56 透明窗口 */
+@import '../shared/theme.css';
+
+html,
+body {
+  background: transparent !important;
+}
+
+.ball-shell {
+  width: 56px;
+  height: 56px;
+  cursor: grab;
+  opacity: var(--orb-idle-alpha);
+  transition: opacity 150ms ease-out, transform 150ms ease-out;
+}
+
+/* 有活跃状态（运行/等待/完成/错误/超时/初始化）时更醒目，空闲/断连保持低调 */
+.ball-shell:where(.state-initializing, .state-running, .state-waiting, .state-done, .state-error, .state-timeout) {
+  opacity: var(--orb-active-alpha);
+}
+
+/* hover 时球体变实心（最高优先级，任何状态悬停都全不透明） */
+.ball-shell:hover {
+  opacity: 1;
+  transform: scale(1.08);
+}
+
+.ball-shell:active {
+  cursor: grabbing;
+}
+
+.ball {
+  display: block;
+  width: 56px;
+  height: 56px;
+}
+
+/* ---- 状态环动画 ---- */
+.ring-rotate {
+  animation: ring-rotate 1.2s linear infinite;
+  transform-origin: 28px 28px;
+  transform-box: fill-box;
+}
+@keyframes ring-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.ring-breathe {
+  animation: ring-breathe 2s ease-in-out infinite;
+}
+@keyframes ring-breathe {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.ring-flash {
+  animation: ring-flash 1s steps(1) infinite;
+}
+@keyframes ring-flash {
+  0%,
+  60% {
+    opacity: 1;
+  }
+  61%,
+  100% {
+    opacity: 0.25;
+  }
+}
+
+.ring-slow-flash {
+  animation: ring-slow-flash 1s ease-in-out infinite;
+}
+@keyframes ring-slow-flash {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* 完成态：球体单次弹跳 */
+.ball-bounce {
+  animation: ball-bounce 250ms ease-out 1;
+}
+@keyframes ball-bounce {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.08);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* ---- 眼睛动画 ---- */
+.eye-layer {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+/* 瞳孔游移：初始化时快速左右搜寻 */
+.eye-dart .pupil {
+  animation: pupil-dart 0.5s ease-in-out infinite alternate;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+@keyframes pupil-dart {
+  from {
+    transform: translateX(-2.4px);
+  }
+  to {
+    transform: translateX(2.4px);
+  }
+}
+
+/* 运行中：瞳孔缓慢游移 */
+.eye-blink-r .pupil {
+  animation: pupil-drift 3.6s ease-in-out infinite alternate;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+@keyframes pupil-drift {
+  from {
+    transform: translateX(-1.2px);
+  }
+  to {
+    transform: translateX(1.4px);
+  }
+}
+
+/* 眨眼：running 每 ~5s 一次 */
+.eye-blink-r {
+  animation: blink-running 5s linear infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+@keyframes blink-running {
+  0%,
+  90%,
+  100% {
+    transform: scaleY(1);
+  }
+  94%,
+  96% {
+    transform: scaleY(0.08);
+  }
+}
+
+/* 等待输入：更频繁眨眼（催促） */
+.eye-blink-w {
+  animation: blink-waiting 2.2s linear infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+@keyframes blink-waiting {
+  0%,
+  82%,
+  100% {
+    transform: scaleY(1);
+  }
+  88%,
+  92% {
+    transform: scaleY(0.08);
+  }
+}
+
+/* 断连：z 飘出 */
+.z-float {
+  animation: z-float 2s ease-in-out infinite;
+  opacity: 0;
+}
+@keyframes z-float {
+  0%,
+  20% {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  45%,
+  70% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-5px);
+  }
+}

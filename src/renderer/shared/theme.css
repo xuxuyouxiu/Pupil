@@ -1,0 +1,72 @@
+/* 设计 Token —— 与 docs/uiux.md 2.1 节保持一致（暗色优先，跟随系统） */
+:root {
+  color-scheme: dark;
+
+  /* A1-identity 表面层 */
+  --bg: #0d1117;
+  --surface: #161b22;
+  --surface-warm: #21262d;
+  --border: #30363d;
+  --border-soft: rgba(255, 255, 255, 0.06);
+
+  /* A1-identity 前景层 */
+  --fg: #f0f6fc;
+  --fg-2: #d0d6e0;
+  --muted: #8b949e;
+  --meta: #484f58;
+
+  /* A2 强调色 */
+  --accent: #2563eb;
+  --accent-on: #ffffff;
+
+  /* A2 语义状态色（六态系统） */
+  --state-running: #3b82f6;
+  --state-waiting: #d29922;
+  --state-done: #3fb950;
+  --state-error: #f85149;
+  --state-timeout: #db6d28;
+  --state-offline: #8b949e;
+
+  /* 透明度 Token */
+  --orb-idle-alpha: 0.55;
+  --orb-hover-alpha: 0.95;
+  --orb-active-alpha: 0.92; /* 有活跃状态（运行/等待/错误/超时等）时更醒目 */
+  --panel-alpha: 0.96;
+
+  /* 精灵眼球体 Token */
+  --orb-body: #0d1117;
+  --orb-highlight: #21262d;
+  --eye-white: #f0f6fc;
+  --eye-pupil: #0d1117;
+  --eye-highlight: #f0f6fc;
+
+  /* 字体 */
+  --font-body: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Cascadia Code', Consolas, monospace;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  user-select: none;
+}
+
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 尊重系统减弱动效设置：全部循环动画降级为静态 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001s !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001s !important;
+  }
+}
