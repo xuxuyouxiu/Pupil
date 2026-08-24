@@ -108,6 +108,7 @@
 | 透明/不透明窗口与渲染 | Win10 上 `transparent: true` 禁用 ClearType（文字发虚）→ 面板改不透明；但不透明窗口内容不满高时下半截露出原生底色死区（"下面一大片空白"）→ 根节点必须撑满整个窗口 |
 | 断连推断语义 | "静默 >30s = 断连"只对运行中状态成立：idle/waiting_input 的静默是正常等待用户；sqlite 轮询源（hermes/codex）运行中静默多半是长回复生成中，需按 agent 放宽阈值 |
 | 窗口跳转匹配 | pid 只有 hook 型源有；轮询型源（hermes/codex）会话 ID 前缀从不出现在窗口标题里，必然"窗口未找到"→ 按 agent 给宿主应用名关键词兜底（hermes 桌面版单实例），并让 adapter 上报库里真实会话标题用于匹配与展示 |
+| koffi 回调绑定 | 2.x 里 `user32.func(..., ['callback', ...])` 直接绑定失败且被吞 → API 恒 null、功能整体静默失效；正确写法：`koffi.proto` 声明 + 参数表 `'名 *'` + `koffi.register(fn, koffi.pointer(proto))`；出参数组必须 `koffi.out` 否则不回写（pid 恒 0）；匹配必须排除本进程窗口（目录名撞自家标题） |
 | 本机沙箱跑 Electron | 注入 `ELECTRON_RUN_AS_NODE=1`（检查存在性），需 `unset` 彻底移除（`env -u` 会吞 stdout）；需 `no-sandbox` + 关硬件加速 |
 | 孤儿进程 | TaskStop 杀 npm 父进程会留 electron.exe 孤儿，需 `Stop-Process -Name electron` 补刀 |
 | Claude Code jsonl 格式 | 顶层 type 只有 user/assistant/queue-operation 等；tool_use/tool_result/thinking 是 `message.content` 内嵌块，非顶层行；`stop_reason` 在 `message.stop_reason` 不在顶层 |

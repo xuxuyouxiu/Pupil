@@ -2,6 +2,18 @@
 
 本文件记录 Pupil 的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.2.4] - 2026-08-24
+
+### 修复
+- **宿主窗口明明开着仍提示"窗口未找到"（用户反馈）**：koffi 2.x 的 `EnumWindows` 回调参数声明为裸 `'callback'` 类型名，绑定直接抛 `Unknown or invalid type name 'callback'` 且被 try/catch 静默吞掉 → FFI API 恒为 null → **所有会话永远提示窗口未找到**（与宿主是否运行无关）。重写绑定链路：
+  1. 回调用 `koffi.proto` 声明原型，符号参数表按 `'<原型名> *'` 引用；JS 回调用 `koffi.register(fn, koffi.pointer(proto))` 创建模块级常驻实例（防 GC），枚举时换 handler
+  2. hwnd 全链改 `uintptr`（64 位进程句柄截断隐患）
+  3. `GetWindowThreadProcessId` 出参数组补 `koffi.out` —— 此前不回写、pid 恒为 0，pid 匹配加分形同虚设
+  4. 新增本进程窗口排除：会话目录名可能撞上自家窗口标题（如 cwd=Pupil 命中 "Pupil Ball"，实测得分反超真目标），跳转永不落到自己身上
+
+### 新增
+- `scripts/probe-win32.mjs`：win32 激活链路诊断探针（枚举窗口 + 复现匹配打分），`PUPIL_PROBE_OWN_PID=<pid>` 可指定视为自身的 pid
+
 ## [0.2.3] - 2026-08-24
 
 ### 修复
