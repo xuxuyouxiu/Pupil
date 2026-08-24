@@ -29,6 +29,31 @@ body {
   cursor: grabbing;
 }
 
+/* 勿扰模式：球体压暗 + 月牙角标呼吸（用户反馈：勿扰开关没有可见效果） */
+.ball-shell.dnd-on {
+  opacity: calc(var(--orb-idle-alpha) * 0.7);
+}
+.ball-shell.dnd-on:where(.state-initializing, .state-running, .state-waiting, .state-done, .state-error, .state-timeout) {
+  opacity: calc(var(--orb-active-alpha) * 0.7);
+}
+.ball-shell.dnd-on:hover {
+  opacity: 0.9;
+}
+.dnd-badge {
+  animation: dnd-breathe 3s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+@keyframes dnd-breathe {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
 .ball {
   display: block;
   width: 56px;

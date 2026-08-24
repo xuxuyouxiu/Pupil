@@ -105,6 +105,8 @@
 | 悬浮球拖动 | 勿用 `-webkit-app-region: drag`（吞鼠标事件）与 `setPointerCapture` + `getCursorScreenPoint`（透明窗口 pointerup 丢失→球漂移）；最终用 window 级 pointer 监听 + renderer 传 screenX/Y delta |
 | SQLite 访问 | Electron 33 内置 Node 20 无 `node:sqlite`，用 koffi FFI 直调系统 `winsqlite3.dll`；out 指针需 `_Out_` 限定符 + `[null]` 数组 |
 | PowerShell hook 脚本 | 必须纯 ASCII + 写文件加 UTF-8 BOM，否则 Windows PowerShell 5.1 按 ANSI 误读中文破坏语法 |
+| 透明/不透明窗口与渲染 | Win10 上 `transparent: true` 禁用 ClearType（文字发虚）→ 面板改不透明；但不透明窗口内容不满高时下半截露出原生底色死区（"下面一大片空白"）→ 根节点必须撑满整个窗口 |
+| 断连推断语义 | "静默 >30s = 断连"只对运行中状态成立：idle/waiting_input 的静默是正常等待用户；sqlite 轮询源（hermes/codex）运行中静默多半是长回复生成中，需按 agent 放宽阈值 |
 | 本机沙箱跑 Electron | 注入 `ELECTRON_RUN_AS_NODE=1`（检查存在性），需 `unset` 彻底移除（`env -u` 会吞 stdout）；需 `no-sandbox` + 关硬件加速 |
 | 孤儿进程 | TaskStop 杀 npm 父进程会留 electron.exe 孤儿，需 `Stop-Process -Name electron` 补刀 |
 | Claude Code jsonl 格式 | 顶层 type 只有 user/assistant/queue-operation 等；tool_use/tool_result/thinking 是 `message.content` 内嵌块，非顶层行；`stop_reason` 在 `message.stop_reason` 不在顶层 |

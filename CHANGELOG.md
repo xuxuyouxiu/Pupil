@@ -2,6 +2,16 @@
 
 本文件记录 Pupil 的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.2.2] - 2026-08-24
+
+### 修复
+- **面板底部大片空白（用户反馈"下面有那么大一片空白"）**：面板窗口改不透明后 `.panel` 卡片仍是随内容收缩的高度，内容不足时窗口下半截露出原生底色死区；现在 `html/body/#root` 全高 + `.panel` 撑满整个窗口，列表区 `flex:1` 自动吸收剩余高度，设置视图同样受益（`src/renderer/panel/panel.css`）
+- **"Hermes 链接中断"误报 + "发消息后才显示运行"**：推断引擎把任意状态静默 >30s 一律判为断连，但 idle（等用户下一句）与 waiting_input（等用户确认）的静默是正常等待；改为仅运行中（thinking/tool_calling）静默才判断连，且 hermes/codex 这类 sqlite 轮询源的运行中静默多半是长回复生成中，按 agent 放宽断连阈值到与 timeout 一致（`src/core/inference.ts` 新增 `disconnectThresholdMsByAgent`、`src/main/monitoring-core.ts` 注入）
+- **夜间（勿扰）模式没有可见效果（用户反馈）**：勿扰此前只抑制音效/通知，球面毫无变化；悬浮球新增右上角月牙角标（呼吸动画）+ 勿扰时球体压暗（`Ball.tsx`、`ball.css`）；补上缺失的 `useState` import（上一轮遗留 typecheck 错误）
+
+### 测试
+- 断连推断语义变更同步用例：idle/waiting_input 静默不打标记、运行中超阈值才打 disconnected（41 个用例全绿）
+
 ## [0.2.1] - 2026-08-24
 
 ### 修复

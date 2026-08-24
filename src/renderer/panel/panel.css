@@ -1,16 +1,25 @@
 /* 详情面板样式 —— 360px，暗色高密度（Linear 语汇） */
 @import '../shared/theme.css';
 
+/* 面板窗口本身不透明（Win10 透明窗口禁用 ClearType 致文字发虚），
+   面板卡片必须撑满整个窗口：否则内容不足时窗口下部露出原生底色死区
+   （用户反馈「下面一大片空白」）。列表区 flex:1 自动吸收剩余高度。 */
 html,
-body {
-  background: transparent !important;
+body,
+#root {
+  height: 100%;
+  background: var(--bg);
+}
+
+#root {
+  display: flex;
 }
 
 .panel {
   display: flex;
   flex-direction: column;
   width: 360px;
-  max-height: 480px;
+  height: 100%;
   /* 实色兜底在前，color-mix 支持时用 100% 不透明暗底（Win10 透明窗口易发虚，面板不再半透明） */
   background: var(--bg);
   background: color-mix(in srgb, var(--bg) var(--panel-alpha), transparent);

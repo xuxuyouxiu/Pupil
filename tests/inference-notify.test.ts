@@ -61,7 +61,7 @@ describe('InferenceEngine', () => {
     expect(changed[0].flags.disconnected).toBe(true)
   })
 
-  it('idle 会话只判断连不判超时', () => {
+  it('idle 会话静默不打任何标记（等下一句是正常等待）', () => {
     const reg = new SessionRegistry()
     reg.apply(makeEvent('session_started'))
     const eng = new InferenceEngine(reg, {
@@ -69,9 +69,32 @@ describe('InferenceEngine', () => {
       disconnectThresholdMs: 30 * 1000
     })
     const changed = eng.tick(1_000_000 + 20 * 60 * 1000)
-    expect(changed[0].state).toBe('idle')
-    expect(changed[0].flags.timeout).toBe(false) // idle 不判超时
+    expect(changed).toHaveLength(0) // idle 静默既不超时也不断连
+  })
+
+  it('waiting_input 静默不打断连标记（等用户确认是正常等待）', () => {
+    const reg = new SessionRegistry()
+    reg.apply(makeEvent('turn_started'))
+    reg.apply(makeEvent('waiting_input'))
+    const eng = new InferenceEngine(reg, {
+      timeoutThresholdMs: 10 * 60 * 1000,
+      disconnectThresholdMs: 30 * 1000
+    })
+    const changed = eng.tick(1_000_000 + 60_000)
+    expect(changed).toHaveLength(0)
+  })
+
+  it('运行中静默超阈值才打 disconnected', () => {
+    const reg = new SessionRegistry()
+    reg.apply(makeEvent('turn_started'))
+    const eng = new InferenceEngine(reg, {
+      timeoutThresholdMs: 10 * 60 * 1000,
+      disconnectThresholdMs: 30 * 1000
+    })
+    const changed = eng.tick(1_000_000 + 31_000)
+    expect(changed).toHaveLength(1)
     expect(changed[0].flags.disconnected).toBe(true)
+    expect(changed[0].state).toBe('thinking')
   })
 
   it('新事件清除叠加标记（恢复即清除）', () => {

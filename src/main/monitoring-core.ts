@@ -55,7 +55,13 @@ export class MonitoringCore {
     this.muted = config.get('muted') ?? false
     this.inference = new InferenceEngine(this.registry, {
       timeoutThresholdMs: config.get('timeoutThresholdMs') ?? 10 * 60 * 1000,
-      disconnectThresholdMs: config.get('disconnectThresholdMs') ?? 30 * 1000
+      disconnectThresholdMs: config.get('disconnectThresholdMs') ?? 30 * 1000,
+      // hermes/codex 是 sqlite 轮询源：会话存亡由库跟踪（ended_at），运行中静默
+      // 多半是长回复生成中；断连阈值放宽到与超时一致，避免误报"连接中断"
+      disconnectThresholdMsByAgent: {
+        hermes: config.get('timeoutThresholdMs') ?? 10 * 60 * 1000,
+        codex: config.get('timeoutThresholdMs') ?? 10 * 60 * 1000
+      }
     })
   }
 

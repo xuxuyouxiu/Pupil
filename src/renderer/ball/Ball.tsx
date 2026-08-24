@@ -5,7 +5,7 @@
  *   中层：黑色球体 + 微弱高光
  *   中心：EyeSystem 精灵眼（最高优先级状态的表情）
  */
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   DISPLAY_PRIORITY,
   DisplayState,
@@ -111,6 +111,13 @@ function RingSegments({ views }: { views: SessionView[] }) {
 export function Ball() {
   const sessions = useSessions()
   const display = useMemo(() => aggregateState(sessions), [sessions])
+  const [dnd, setDnd] = useState(false)
+
+  useEffect(() => {
+    void window.pupil.getDnd().then(setDnd)
+    const off = window.pupil.onDndChanged(setDnd)
+    return off
+  }, [])
 
   // 自定义拖动：window 级监听 pointermove/up（避免 pointerup 丢失导致球漂移）
   const draggingRef = useRef(false)
@@ -171,7 +178,7 @@ export function Ball() {
 
   return (
     <div
-      className={`ball-shell state-${display}`}
+      className={`ball-shell state-${display} ${dnd ? 'dnd-on' : ''}`}
       onClick={handleClick}
       onPointerDown={handlePointerDown}
       onContextMenu={(e) => {
@@ -191,6 +198,17 @@ export function Ball() {
         <g className="eye-layer">
           <EyeSystem mode={display} />
         </g>
+        {/* 勿扰指示：右上角月牙角标（可见反馈，勿扰时球体同步变暗） */}
+        {dnd && (
+          <g className="dnd-badge">
+            <path
+              d="M 44.6 8.2 A 5.4 5.4 0 1 1 38.2 1.9 A 4.3 4.3 0 0 0 44.6 8.2 Z"
+              fill="var(--state-waiting)"
+              stroke="var(--orb-body)"
+              strokeWidth={1.2}
+            />
+          </g>
+        )}
       </svg>
     </div>
   )
