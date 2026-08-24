@@ -2,6 +2,17 @@
 
 本文件记录 Pupil 的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.2.3] - 2026-08-24
+
+### 修复
+- **点击会话提示"窗口未找到"（用户反馈）**：窗口匹配靠 pid 优先 + 会话 ID/目录名标题包含兜底，但 Hermes/Codex 是 sqlite 轮询型源——天生无 pid、会话 ID 前缀（如 `20260824_190`）从不出现在窗口标题里，得分恒为 0。三层修复：
+  1. 匹配兜底加「宿主应用名」最低分档：Hermes 桌面版单实例、主窗口标题即 "Hermes"，按 agent 类型给关键词（`win32-window.ts` 新增 `AGENT_WINDOW_HINTS`）
+  2. 轮询型 adapter 把库里的**真实会话标题**随事件上报（`AgentEventPayload` 新增 `title` 字段；hermes 维护 sessionId→title 映射并在摘要标题生成后重发 session_started 刷新面板；codex threads 同理）——标题同时用于面板展示与窗口匹配，真实标题含项目名时可直接命中终端窗口标题
+  3. `SessionRegistry` 首见与后续事件均接受 `payload.title` 覆盖 ID 前缀兜底名
+
+### 测试
+- 新增 `tests/session-registry.test.ts`：payload.title 首见采用 / 缺省回退 / 后续更新三用例（44 个全绿）
+
 ## [0.2.2] - 2026-08-24
 
 ### 修复

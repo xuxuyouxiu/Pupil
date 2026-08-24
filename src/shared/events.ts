@@ -25,6 +25,7 @@ export interface AgentEventPayload {
   errorMessage?: string // error
   modelName?: string // thinking
   pid?: number // 上报方附带的进程号（用于窗口跳转）
+  title?: string // 轮询型源（hermes/codex）附带的真实会话标题（面板展示 + 窗口匹配）
   raw?: unknown // 原始行/事件，调试用
 }
 

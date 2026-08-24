@@ -61,8 +61,8 @@ export class SessionRegistry {
         flags: { timeout: false, disconnected: false },
         cwd: event.cwd,
         lastEventAt: event.timestamp,
-        title: deriveTitle(event.sessionId, event.cwd),
         pid: event.payload?.pid,
+        title: event.payload?.title ?? deriveTitle(event.sessionId, event.cwd),
         prevState: 'idle',
         events: []
       }
@@ -75,6 +75,8 @@ export class SessionRegistry {
     // 字段更新
     if (event.cwd !== undefined) rec.cwd = event.cwd
     if (event.payload?.pid !== undefined) rec.pid = event.payload.pid
+    // 轮询型源（hermes/codex）后发真实标题（如 Hermes 摘要标题）：覆盖 ID 前缀兜底名
+    if (event.payload?.title) rec.title = event.payload.title
 
     switch (event.eventType) {
       case 'turn_started':

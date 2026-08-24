@@ -54,6 +54,8 @@ export class HermesSqliteAdapter implements AgentAdapter {
   private pollTimer: NodeJS.Timeout | null = null
   private lastMessageId = 0
   private activeSessions = new Map<string, boolean>() // id -> 是否已上报 session_started
+  /** 会话真实标题（sessions.title），消息差分事件也带上供面板展示/窗口匹配 */
+  private titles = new Map<string, string>()
   private stopped = false
 
   async start(emit: (e: AgentEvent) => void): Promise<void> {
@@ -78,6 +80,7 @@ export class HermesSqliteAdapter implements AgentAdapter {
         const lastAct = Number(s.last_activity_at ?? 0) * 1000
         if (now - lastAct > ACTIVE_WINDOW_MS) continue // 历史会话不铺面板
         this.activeSessions.set(s.id, true)
+        if (s.title) this.titles.set(s.id, s.title)
         this.emitSession(s, 'session_started', lastAct)
         this.recoverState(db, s, lastAct)
       }
@@ -108,9 +111,9 @@ export class HermesSqliteAdapter implements AgentAdapter {
     const last = rows[0]
     if (!last) return
     if (last.role === 'user' || (last.role === 'assistant' && last.finish_reason !== 'stop')) {
-      this.emit?.({ source: ID, agentType: 'hermes', sessionId: s.id, cwd: s.cwd, eventType: 'turn_started', timestamp: Date.now() })
+      this.emit?.({ source: ID, agentType: 'hermes', sessionId: s.id, cwd: s.cwd, eventType: 'turn_started', timestamp: Date.now(), payload: { title: s.title } })
       if (last.tool_name) {
-        this.emit?.({ source: ID, agentType: 'hermes', sessionId: s.id, cwd: s.cwd, eventType: 'tool_call_started', timestamp: Date.now(), payload: { toolName: last.tool_name } })
+        this.emit?.({ source: ID, agentType: 'hermes', sessionId: s.id, cwd: s.cwd, eventType: 'tool_call_started', timestamp: Date.now(), payload: { toolName: last.tool_name, title: s.title } })
       }
     }
   }
@@ -139,6 +142,13 @@ export class HermesSqliteAdapter implements AgentAdapter {
       for (const s of sessions) {
         if (!s.id) continue
         const lastAct = Number(s.last_activity_at ?? 0) * 1000
+        if (s.title && s.title !== this.titles.get(s.id)) {
+          // 标题更新（Hermes 首条回复后才生成摘要标题）：重发 session_started 刷新面板
+          this.titles.set(s.id, s.title)
+          if (this.activeSessions.get(s.id)) {
+            this.emitSession(s, 'session_started', lastAct)
+          }
+        }
         const wasActive = this.activeSessions.get(s.id)
         if (s.ended_at != null) {
           if (wasActive) {
@@ -166,12 +176,13 @@ export class HermesSqliteAdapter implements AgentAdapter {
       sessionId: m.session_id,
       timestamp: ts || Date.now()
     }
+    const title = this.titles.get(m.session_id)
     if (m.role === 'user') {
-      this.emit?.({ ...base, eventType: 'turn_started', payload: { raw: m } })
+      this.emit?.({ ...base, eventType: 'turn_started', payload: { title, raw: m } })
     } else if (m.role === 'tool' && m.tool_name) {
-      this.emit?.({ ...base, eventType: 'tool_call_started', payload: { toolName: m.tool_name, raw: m } })
+      this.emit?.({ ...base, eventType: 'tool_call_started', payload: { toolName: m.tool_name, title, raw: m } })
     } else if (m.role === 'assistant' && m.finish_reason === 'stop') {
-      this.emit?.({ ...base, eventType: 'turn_completed', payload: { raw: m } })
+      this.emit?.({ ...base, eventType: 'turn_completed', payload: { title, raw: m } })
     }
   }
 
@@ -183,7 +194,7 @@ export class HermesSqliteAdapter implements AgentAdapter {
       cwd: s.cwd,
       eventType,
       timestamp: ts || Date.now(),
-      payload: { raw: { title: s.title } }
+      payload: { title: s.title, raw: { title: s.title } }
     })
   }
 }

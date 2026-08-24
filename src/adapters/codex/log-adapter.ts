@@ -188,7 +188,7 @@ export class CodexLogAdapter implements AgentAdapter {
             cwd: r.cwd,
             eventType: 'turn_started',
             timestamp: now,
-            payload: { raw: { updated, tokens } }
+            payload: { title: r.title, raw: { updated, tokens } }
           })
         }
       }
@@ -403,7 +403,7 @@ export class CodexLogAdapter implements AgentAdapter {
       cwd: r.cwd,
       eventType: 'session_started',
       timestamp: Date.now(),
-      payload: { raw: { title: r.title } }
+      payload: { title: r.title, raw: { title: r.title } }
     })
   }
 }

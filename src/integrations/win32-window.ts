@@ -2,7 +2,7 @@
  * Win32 窗口激活集成 —— koffi FFI 直调 user32.dll
  * 架构文档 7.2：定位窗口（PID 优先 -> 标题匹配兜底）-> SetForegroundWindow + Alt 键 workaround
  */
-import { SessionView } from '../shared/events'
+import { AgentType, SessionView } from '../shared/events'
 
 // koffi 为原生模块，加载失败时降级（不影响应用其他功能）
 let koffi: { load: (lib: string) => unknown } | null = null
@@ -50,6 +50,14 @@ function loadApi(): Win32Api | null {
 
 const api = loadApi()
 
+/** agent 类型 -> 宿主应用窗口标题关键词（轮询型会话无 pid、会话 ID 不在窗口标题里时的兜底） */
+const AGENT_WINDOW_HINTS: Partial<Record<AgentType, string[]>> = {
+  // Hermes 桌面版是单实例应用，主窗口标题即 "Hermes"，跳到它就是正确行为
+  hermes: ['hermes'],
+  codex: ['codex'],
+  'claude-code': ['claude']
+}
+
 /** 按 PID / 标题 / 目录名打分，找到最匹配的顶层可见窗口 */
 function findWindow(session: SessionView): number | null {
   if (!api) return null
@@ -58,6 +66,8 @@ function findWindow(session: SessionView): number | null {
 
   const key = (session.title ?? session.sessionId).toLowerCase()
   const dir = session.cwd?.split(/[\\/]/).pop()?.toLowerCase() ?? ''
+  // 宿主应用名兜底：仅当会话自身标识（ID/标题）匹配不到时才启用，且分数最低
+  const hints = AGENT_WINDOW_HINTS[session.agentType] ?? []
 
   try {
     api.EnumWindows((hwnd: number) => {
@@ -75,6 +85,7 @@ function findWindow(session: SessionView): number | null {
         const title = buf.toString('utf16le', 0, len * 2).toLowerCase()
         if (key && title.includes(key)) score += 5
         if (dir && title.includes(dir)) score += 3
+        if (hints.some((h) => title.includes(h))) score += 1
       }
       if (score > bestScore) {
         bestScore = score
