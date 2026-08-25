@@ -89,7 +89,7 @@
 2. **独立设置窗口**：从面板内视图升级为独立窗口（架构 P1）
 3. **Codex rollout 实测校准**：rollout jsonl 行格式按官方文档实现，本机无经典 CLI 数据，需在装有 Codex CLI 的环境回归
 4. **CLI shim 加入 PATH**：`pupil.cmd` 已落 `%LOCALAPPDATA%/Pupil/bin`，可选把该目录注册进用户 PATH 免 cd
-5. **内存优化：合并渲染进程**：面板从独立 BrowserWindow 改为同渲染进程复用（BrowserView 或单窗多视图），预计省 40-60MB 达标 <100MB；改动中等，需回归拖动/失焦逻辑（已获用户原则同意后实施）
+5. **内存优化（affinity 路线已证伪）**：Electron 33 实测 `webPreferences.affinity` 不再生效（同组窗口仍各起 renderer，进程数 4→6；d.ts 已无此键），共享渲染进程路线不可行。剩余路径：面板并入球窗 BrowserView（结构性改动，需回归拖动/失焦）或接受现状——待用户定夺
 
 ### P2（打磨 / 增强）
 6. **通知跳转精化**：Toast 点击已能跳会话窗口；进一步做「点击历史行跳转」与 pid 匹配链路改进（架构 OPEN-DECISION #2）
@@ -110,6 +110,7 @@
 | 断连推断语义 | "静默 >30s = 断连"只对运行中状态成立：idle/waiting_input 的静默是正常等待用户；sqlite 轮询源（hermes/codex）运行中静默多半是长回复生成中，需按 agent 放宽阈值 |
 | 窗口跳转匹配 | pid 只有 hook 型源有；轮询型源（hermes/codex）会话 ID 前缀从不出现在窗口标题里，必然"窗口未找到"→ 按 agent 给宿主应用名关键词兜底（hermes 桌面版单实例），并让 adapter 上报库里真实会话标题用于匹配与展示 |
 | koffi 回调绑定 | 2.x 里 `user32.func(..., ['callback', ...])` 直接绑定失败且被吞 → API 恒 null、功能整体静默失效；正确写法：`koffi.proto` 声明 + 参数表 `'名 *'` + `koffi.register(fn, koffi.pointer(proto))`；出参数组必须 `koffi.out` 否则不回写（pid 恒 0）；匹配必须排除本进程窗口（目录名撞自家标题） |
+| Electron 33 affinity 已失效 | `webPreferences.affinity` 在 Electron 33 实测不再生效（同组窗口仍各起 renderer，进程 4→6），d.ts 已无此键——老文档示例不可信，共享渲染进程只能靠 BrowserView/WebContentsView 结构改造 |
 | 本机沙箱跑 Electron | 注入 `ELECTRON_RUN_AS_NODE=1`（检查存在性），需 `unset` 彻底移除（`env -u` 会吞 stdout）；需 `no-sandbox` + 关硬件加速 |
 | 孤儿进程 | TaskStop 杀 npm 父进程会留 electron.exe 孤儿，需 `Stop-Process -Name electron` 补刀 |
 | Claude Code jsonl 格式 | 顶层 type 只有 user/assistant/queue-operation 等；tool_use/tool_result/thinking 是 `message.content` 内嵌块，非顶层行；`stop_reason` 在 `message.stop_reason` 不在顶层 |
