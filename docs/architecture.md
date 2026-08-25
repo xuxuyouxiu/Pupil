@@ -379,7 +379,7 @@ SessionView.pid 的获取路径：Claude Code hook 的 PowerShell 脚本可用 G
 - 日志 adapter 用 fs.watch + 增量读取（从上次 offset 续读），不做全文件轮询重读；大 jsonl 只解析新增行。
 - sqlite adapter 只读连接 + 5 秒间隔轮询（仅活跃会话，空闲会话降频至 60 秒）。
 - 事件日志内存环形缓冲（最近 1000 条/会话），不落盘。
-- 验收指标：应用空闲（无活跃会话）时总内存（全进程合计）不超过 250 MB；活跃监控 5 会话时 CPU 平均占用不超过 2%。
+- 验收指标：应用空闲（无活跃会话）时常驻内存（Private Bytes 口径，全进程合计）不超过 150 MB；活跃监控 5 会话时 CPU 平均占用不超过 2%。（v0.2.5 实测：Private Bytes 128 MB、空闲 CPU ~0.02%，均达标。注：原 WorkingSet 口径在 Electron 多进程下含跨进程共享页重复计入，不可比；合并渲染进程的 affinity 路线已在 Electron 33 证伪，见 PROGRESS 踩坑记录。）
 
 ---
 
@@ -444,7 +444,7 @@ SessionView.pid 的获取路径：Claude Code hook 的 PowerShell 脚本可用 G
 5. 人为制造错误（断网触发 API 报错）：球变错误色 + error 音效。
 6. 让任务静置超过 timeout 阈值：球标记 timeout 警示色并提示音。
 7. `node scripts/pupil-send.mjs --event tool_call_started --session test-1 --pid <某窗口PID>`：面板出现 custom 会话；点击行跳转到该 PID 窗口。
-8. 关闭面板与托盘退出：进程全部结束，无残留；任务管理器核对空闲内存不超过 250 MB。
+8. 关闭面板与托盘退出：进程全部结束，无残留；任务管理器核对空闲内存（Private Bytes 口径）不超过 150 MB。
 9. 卸载 hooks：settings.json 恢复原状（安装器做备份还原），Claude Code 正常运行不受影响。
 
 ---
