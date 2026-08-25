@@ -2,7 +2,7 @@
  * Settings —— 设置视图（面板内，MVP 并入面板，独立窗口 P1）
  * 分区：通知（勿扰/静音/音色包/音量）/ 数据接入（adapter 开关）/ Claude Code Hooks 管理
  */
-import { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import { SettingsSnapshot } from '../../shared/ipc-channels'
 import { Moon, VolumeX, ChevronRight, X, Rocket, Music, Volume2 } from '../shared/icons'
 import { listSoundPacks, setSoundConfig, playSound } from '../ball/sound'
@@ -109,14 +109,26 @@ export function Settings({ onBack }: Props) {
 
   return (
     <div className="panel">
-      <header className="panel-top">
+      {/* v0.3.4：独立设置窗口无边框，顶栏即拖动区（-webkit-app-region: drag）。
+          按钮设 no-drag 保持可点。修复「设置窗口卡在屏幕中心拖不动」。 */}
+      <header className="panel-top" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
         <div className="settings-title">
-          <button className="icon-btn" aria-label="返回" onClick={onBack}>
+          <button
+            className="icon-btn"
+            aria-label="返回"
+            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+            onClick={onBack}
+          >
             <ChevronRight size={16} style={{ transform: 'rotate(180deg)' }} />
           </button>
           <span>设置</span>
         </div>
-        <button className="icon-btn" aria-label="关闭" onClick={onBack}>
+        <button
+          className="icon-btn"
+          aria-label="关闭"
+          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+          onClick={onBack}
+        >
           <X size={16} />
         </button>
       </header>

@@ -239,7 +239,7 @@ export class WindowManager {
       Math.round(area.y + (area.height - SETTINGS_HEIGHT) / 2)
     )
 
-    this.loadRenderer(win, 'panel/settings.html')
+    this.loadRenderer(win, 'settings/index.html')
     win.once('ready-to-show', () => win.show())
     win.on('close', (e) => {
       // 首次点关闭 → 隐藏复用；托盘退出走 destroyAll() 时 isDestroyed 前置已处理

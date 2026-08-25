@@ -32,7 +32,7 @@ export default defineConfig({
         input: {
           ball: resolve(__dirname, 'src/renderer/ball/index.html'),
           panel: resolve(__dirname, 'src/renderer/panel/index.html'),
-          settings: resolve(__dirname, 'src/renderer/panel/settings.html')
+          settings: resolve(__dirname, 'src/renderer/settings/index.html')
         }
       }
     },
