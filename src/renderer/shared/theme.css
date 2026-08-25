@@ -60,13 +60,7 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* 尊重系统减弱动效设置：全部循环动画降级为静态 */
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.001s !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.001s !important;
-  }
-}
+/* 注意：这里【故意不写】prefers-reduced-motion 守卫——
+   Win10 系统关闭"显示动画"（SPI CLIENTAREAANIMATION=False，优化工具常关）时
+   Chromium 会命中 reduce，导致球体全部状态动画被强制静态（用户机器实测踩坑：
+   蓝环不转/待机不醒/瞳孔不扫）。悬浮球是状态指示器，动效即核心功能，必须常开。 */
