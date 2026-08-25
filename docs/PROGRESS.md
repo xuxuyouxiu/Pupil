@@ -85,16 +85,17 @@
 ## 四、待办事项
 
 ### P1（核心体验完善）
-1. **性能指标验证（打包版）**：dev 模式实测 ~296MB / 空闲 CPU 增量 ~1.7%，需用打包版复测确认 <100MB / <1% 达标；超标则考虑合并渲染进程或减动画
+1. ~~性能指标验证（打包版）~~ → **已完成实测并记录基线**（见下方性能基线），内存优化方案挂 P1-5
 2. **独立设置窗口**：从面板内视图升级为独立窗口（架构 P1）
 3. **Codex rollout 实测校准**：rollout jsonl 行格式按官方文档实现，本机无经典 CLI 数据，需在装有 Codex CLI 的环境回归
 4. **CLI shim 加入 PATH**：`pupil.cmd` 已落 `%LOCALAPPDATA%/Pupil/bin`，可选把该目录注册进用户 PATH 免 cd
+5. **内存优化：合并渲染进程**：面板从独立 BrowserWindow 改为同渲染进程复用（BrowserView 或单窗多视图），预计省 40-60MB 达标 <100MB；改动中等，需回归拖动/失焦逻辑（已获用户原则同意后实施）
 
 ### P2（打磨 / 增强）
-5. **通知跳转精化**：Toast 点击已能跳会话窗口；进一步做「点击历史行跳转」与 pid 匹配链路改进（架构 OPEN-DECISION #2）
-6. **第三方 adapter 动态加载**：`%APPDATA%/pupil/adapters/*.js` 约定（架构 OPEN-DECISION #6，deferred）
-7. **Hermes webhook**：调研 `hermes webhook` 是否可替代 sqlite 轮询（架构 OPEN-DECISION #7）
-8. **事件历史持久化**：当前环形缓冲仅内存，重启丢失；如需复盘跨天数据再考虑落盘
+6. **通知跳转精化**：Toast 点击已能跳会话窗口；进一步做「点击历史行跳转」与 pid 匹配链路改进（架构 OPEN-DECISION #2）
+7. **第三方 adapter 动态加载**：`%APPDATA%/pupil/adapters/*.js` 约定（架构 OPEN-DECISION #6，deferred）
+8. **Hermes webhook**：调研 `hermes webhook` 是否可替代 sqlite 轮询（架构 OPEN-DECISION #7）
+9. **事件历史持久化**：当前环形缓冲仅内存，重启丢失；如需复盘跨天数据再考虑落盘
 
 ---
 
@@ -117,6 +118,22 @@
 | electron-builder 资源路径 | 打包后 `__dirname` 相对路径失效；统一走 `resourcePath()`（dev=项目 resources/，打包=`process.resourcesPath/`） |
 | SVG 圆心必须显式写 | `<circle>` 漏写 `cx/cy` 时默认 (0,0)=viewBox 左上角，环/圆会画到角落（v0.2.1 状态环错位根因）；代码评审时把"圆无 cx"列为检查项 |
 | 透明窗口与文字渲染 | Windows 上 `transparent: true` 窗口禁用 ClearType，文字发虚；需要清晰文字的窗口（面板/设置）用不透明窗口 + 实色底，只有悬浮球本体保留透明 |
+
+---
+
+## 五·五、性能基线（v0.2.5 打包版实测，2026-08-24）
+
+> 测法：`win-unpacked\Pupil.exe` 启动后空闲 8s，PowerShell 取 4 进程 WorkingSet/PrivateBytes；CPU 用 20s 窗口 TotalProcessorTime 差分 ÷ 核数。
+
+| 指标 | 承诺 | 实测 | 判定 |
+|------|------|------|------|
+| 空闲 CPU（全进程合计） | < 1% | **~0.02%**（20s 增量 0.03s / 8 核） | ✅ 大幅达标 |
+| 内存 WorkingSet（4 进程合计） | — | 285 MB（含跨进程共享页重复计入） | 口径参考 |
+| 内存 Private Bytes（真实占用） | < 100MB | **128 MB** | ❌ 超标 +28MB |
+
+- 进程构成：主进程 ~81MB WS / 球窗渲染 ~107MB WS / GPU + utility 各 ~50MB WS
+- 结论：CPU 承诺轻松达标；内存按行业口径（Private Bytes）超 28%，主因是「球 + 面板」两个独立渲染进程的 Chromium 固定开销
+- 优化路径（P1-5）：面板并入同渲染进程，预计省 40-60MB 达标；实施前需用户确认
 
 ---
 
