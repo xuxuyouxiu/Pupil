@@ -193,14 +193,39 @@ export function Ball() {
     >
       <svg className="ball" viewBox="0 0 56 56" aria-hidden="true">
         <RingSegments views={sessions} />
-        {/* 中层：球体 */}
-        <circle cx={28} cy={28} r={21} fill="var(--orb-body)" className={display === 'done' ? 'ball-bounce' : ''} />
+        {/* 中层：球体（出错抖动 / 空闲呼吸；done 单次弹跳保留） */}
+        <circle
+          cx={28}
+          cy={28}
+          r={21}
+          fill="var(--orb-body)"
+          className={
+            display === 'done'
+              ? 'ball-bounce'
+              : display === 'error'
+                ? 'ball-shake'
+                : display === 'idle'
+                  ? 'ball-breathe'
+                  : ''
+          }
+        />
         {/* 球面高光（低透明度椭圆，非渐变） */}
         <ellipse cx={24.5} cy={21} rx={10.5} ry={6.5} fill="var(--orb-highlight)" opacity={0.35} />
         {/* 中心：精灵眼 */}
         <g className="eye-layer">
           <EyeSystem mode={display} />
         </g>
+        {/* 完成态：两侧星光弹出（配合眯眼笑 + 绿环 + 弹跳） */}
+        {display === 'done' && (
+          <>
+            <g className="sparkle">
+              <path d="M 8 12 l 1 2.2 2.2 1 -2.2 1 -1 2.2 -1 -2.2 -2.2 -1 2.2 -1 z" fill="var(--state-done)" />
+            </g>
+            <g className="sparkle s2">
+              <path d="M 47 15 l 0.9 2 2 0.9 -2 0.9 -0.9 2 -0.9 -2 -2 -0.9 2 -0.9 z" fill="var(--state-done)" />
+            </g>
+          </>
+        )}
         {/* 勿扰指示：右上角月牙角标（可见反馈，勿扰时球体同步变暗） */}
         {dnd && (
           <g className="dnd-badge">

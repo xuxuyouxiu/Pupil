@@ -61,10 +61,13 @@ body {
 }
 
 /* ---- 状态环动画 ---- */
+/* v0.3.6 修复：transform-box: fill-box 下 origin 必须用 center（相对包围盒中心=球心），
+   写 28px 28px 是相对包围盒左上角的偏移，旋转中心偏离球心 3.5px，
+   导致运行中蓝环只在原地小幅打转、看起来像没动 */
 .ring-rotate {
-  animation: ring-rotate 1.2s linear infinite;
-  transform-origin: 28px 28px;
+  animation: ring-rotate 1.1s linear infinite;
   transform-box: fill-box;
+  transform-origin: center;
 }
 @keyframes ring-rotate {
   to {
@@ -218,5 +221,146 @@ body {
   100% {
     opacity: 0;
     transform: translateY(-5px);
+  }
+}
+
+/* ---- v0.3.6 动效增强 ---- */
+
+/* 待机：周期性醒来张望（~7s 一轮：睡 4s → 睁眼左看 → 右看 → 睡回） */
+.idle-wake {
+  transform-box: fill-box;
+  transform-origin: center;
+  opacity: 0;
+  animation: idle-wake-cycle 7s ease-in-out infinite;
+}
+@keyframes idle-wake-cycle {
+  0%,
+  56% {
+    opacity: 0; /* 睡着：睁眼层不可见 */
+    transform: scaleY(0.1);
+  }
+  60%,
+  64% {
+    opacity: 1; /* 醒来 */
+    transform: scaleY(1);
+  }
+  68% {
+    transform: translateX(-2.5px) scaleY(1); /* 左看 */
+  }
+  76% {
+    transform: translateX(2.5px) scaleY(1); /* 右看 */
+  }
+  84% {
+    transform: translateX(0) scaleY(0.9);
+  }
+  90%,
+  100% {
+    opacity: 0; /* 睡回 */
+    transform: scaleY(0.1);
+  }
+}
+/* 睡着的眯眼在醒来时段隐藏（与睁眼交替） */
+.idle-sleep-l,
+.idle-sleep-r {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: idle-sleep-cycle 7s ease-in-out infinite;
+}
+@keyframes idle-sleep-cycle {
+  0%,
+  55% {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+  58%,
+  88% {
+    opacity: 0;
+    transform: scaleY(0.4); /* 闭眼线淡出，让位给睁眼 */
+  }
+  92%,
+  100% {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+}
+
+/* 思考（running）：瞳孔组左右扫视，像在读代码/推理，节奏比 drift 更明显 */
+.think-scan {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: think-scan 2.8s ease-in-out infinite;
+}
+@keyframes think-scan {
+  0%,
+  100% {
+    transform: translateX(-1.6px);
+  }
+  45% {
+    transform: translateX(1.8px);
+  }
+  50% {
+    transform: translateX(1.8px); /* 右侧稍作停顿再扫回 */
+  }
+  95% {
+    transform: translateX(-1.6px);
+  }
+}
+
+/* 出错：球体轻微抖动（摇头感），配合 X 眼与红环闪烁 */
+.ball-shell.state-error .ball-shake {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: ball-shake 0.45s ease-in-out infinite;
+}
+@keyframes ball-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-1.2px);
+  }
+  75% {
+    transform: translateX(1.2px);
+  }
+}
+
+/* 完成：两颗星光从球两侧弹出消散（单次 900ms，随 done 态持续循环间隔播放） */
+.sparkle {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: sparkle-pop 900ms ease-out infinite;
+  opacity: 0;
+}
+.sparkle.s2 {
+  animation-delay: 450ms;
+}
+@keyframes sparkle-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.3) translateY(3px);
+  }
+  30% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.15) translateY(-7px);
+  }
+}
+
+/* 空闲待命：球体极缓慢呼吸（活着的感觉，幅度小不干扰） */
+.ball-shell.state-idle .ball-breathe {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: orb-idle-breathe 4s ease-in-out infinite;
+}
+@keyframes orb-idle-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.02);
   }
 }

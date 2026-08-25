@@ -48,10 +48,11 @@ function OpenEye({
 }
 
 /** 闭合线眼 */
-function ClosedEye({ cx, smile = false }: { cx: number; smile?: boolean }) {
+function ClosedEye({ cx, smile = false, cls = '' }: { cx: number; smile?: boolean; cls?: string }) {
   if (smile) {
     return (
       <path
+        className={cls}
         d={`M ${cx - 5.5} ${EYE_CY + 1} Q ${cx} ${EYE_CY - 4} ${cx + 5.5} ${EYE_CY + 1}`}
         fill="none"
         stroke="var(--eye-white)"
@@ -62,6 +63,7 @@ function ClosedEye({ cx, smile = false }: { cx: number; smile?: boolean }) {
   }
   return (
     <path
+      className={cls}
       d={`M ${cx - 5} ${EYE_CY} Q ${cx} ${EYE_CY + 2} ${cx + 5} ${EYE_CY}`}
       fill="none"
       stroke="var(--eye-white)"
@@ -142,10 +144,13 @@ export function EyeSystem({ mode }: EyeSystemProps) {
       )
       break
     case 'running':
+      // v0.3.6：思考感——瞳孔左右扫视（像在阅读/推理），叠加眨眼
       content = (
         <>
-          <OpenEye cx={left} gaze={0.6} cls="eye-blink-r" />
-          <OpenEye cx={right} gaze={-0.6} cls="eye-blink-r" />
+          <g className="think-scan">
+            <OpenEye cx={left} gaze={0.6} cls="eye-blink-r" />
+            <OpenEye cx={right} gaze={-0.6} cls="eye-blink-r" />
+          </g>
         </>
       )
       break
@@ -192,10 +197,15 @@ export function EyeSystem({ mode }: EyeSystemProps) {
       break
     case 'idle':
     default:
+      // v0.3.6：待机不再是死睡——周期性醒来睁眼张望（左看右看再睡回去）
       content = (
         <>
-          <ClosedEye cx={left} smile />
-          <ClosedEye cx={right} smile />
+          <g className="idle-wake">
+            <OpenEye cx={left} gaze={-1.2} />
+            <OpenEye cx={right} gaze={1.2} />
+          </g>
+          <ClosedEye cx={left} smile cls="idle-sleep-l" />
+          <ClosedEye cx={right} smile cls="idle-sleep-r" />
         </>
       )
       break
