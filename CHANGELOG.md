@@ -2,6 +2,11 @@
 
 本文件记录 Pupil 的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.3.2] - 2026-08-25
+
+### 修复
+- **任务管理器进程名带长描述（用户反馈）**：exe 版本信息 FileDescription 取自 package.json `description`（"Pupil - 开源多 Agent 桌面悬浮球监控工具…"），任务管理器显示一长串；改为 `"description": "Pupil"`，进程列表现在只显示 **Pupil**
+
 ## [0.3.1] - 2026-08-25
 
 ### 修复
