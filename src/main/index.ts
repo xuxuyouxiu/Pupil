@@ -150,7 +150,7 @@ function bootstrap(): void {
     if (binDir) {
       console.log(`[cli] pupil.cmd ready at ${binDir}`)
       // P1-4：bin 目录注册进用户 PATH（幂等），任意终端直接敲 `pupil`
-      ensureCliOnPath(binDir)
+      void ensureCliOnPath(binDir)
     }
   })
 

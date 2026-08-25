@@ -2,6 +2,12 @@
 
 本文件记录 Pupil 的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.3.1] - 2026-08-25
+
+### 修复
+- **CLI 进 PATH 在打包版实际未生效（v0.3.0 回归，冒烟发现）**：原实现把 PowerShell 语句经 spawn 参数拼成 `-Command` 内联，`$p` 等变量在外层传参时被吞导致 PS 解析失败、注册静默失败。改为生成临时 `.ps1` 脚本文件用 `-File` 执行（变量不被外层干扰），并 `spawnSync` 同步等待结果 + 日志留痕。真机回归：CHANGED → 再跑 ALREADY（幂等），`reg query HKCU\Environment` 确认 bin 目录在列
+- `ensureCliOnPath` 签名改 async（调用方 `void` 掉即可，行为不变）
+
 ## [0.3.0] - 2026-08-25
 
 ### 新增
