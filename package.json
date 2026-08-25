@@ -1,6 +1,6 @@
 {
   "name": "pupil",
-  "version": "0.2.5",
+  "version": "0.3.0",
   "description": "Pupil - 开源多 Agent 桌面悬浮球监控工具（Windows 优先）",
   "main": "out/main/index.js",
   "author": "Pupil Team",

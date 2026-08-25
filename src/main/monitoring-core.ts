@@ -7,6 +7,7 @@
  *   4. 向订阅者（球窗/面板窗）广播快照
  */
 import { AdapterRegistry } from '../adapters/registry'
+import { loadExternalAdapters } from '../adapters/external'
 import { HttpIngestAdapter } from '../adapters/http-ingest/server'
 import { claudeCodeLogAdapterFactory } from '../adapters/claude-code/log-adapter'
 import { claudeCodeHooksAdapterFactory } from '../adapters/claude-code/hooks-adapter'
@@ -92,6 +93,17 @@ export class MonitoringCore {
     this.adapters.register(claudeCodeLogAdapterFactory) // 通道 A 兜底
     this.adapters.register(codexLogAdapterFactory) // 通道 A
     this.adapters.register(hermesSqliteAdapterFactory) // 通道 A
+
+    // P2-6 第三方 adapter 动态加载：%APPDATA%/pupil/adapters/*.js（单文件失败跳过）
+    const externals = loadExternalAdapters()
+    for (const factory of externals) {
+      const extId: string = factory.id ?? `external-${this.adapterIds.length}`
+      this.adapters.register({ ...factory, id: extId })
+      if (!ADAPTER_LABELS[extId]) {
+        ADAPTER_LABELS[extId] = `${extId}（第三方）`
+      }
+    }
+
     this.adapterIds = [
       'http-ingest',
       'claude-code-hooks',
@@ -102,6 +114,11 @@ export class MonitoringCore {
 
     const disabled = new Set(this.config.get('disabledAdapters') ?? [])
     await this.adapters.startAll((e) => this.onEvent(e), disabled)
+
+    // 第三方 adapter 的 id 追加到面板开关列表（startAll 后统一收集，含运行时生成的兜底 id）
+    for (const a of this.adapters.active) {
+      if (!this.adapterIds.includes(a.id)) this.adapterIds.push(a.id)
+    }
 
     // 推断 tick：每秒检查一次（仅比较时间戳，开销可忽略）
     this.inferenceTimer = setInterval(() => {

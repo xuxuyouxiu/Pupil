@@ -71,6 +71,8 @@ export const IPC = {
   /** renderer -> 主进程：安装/卸载 Claude Code hooks */
   hooksInstall: 'pupil:hooks:install',
   hooksUninstall: 'pupil:hooks:uninstall',
+  /** renderer -> 主进程：打开独立设置窗口（P1-2） */
+  settingsWindowOpen: 'pupil:settings-window:open',
   /** renderer -> 主进程：查询事件历史（环形缓冲投影，时间倒序） */
   historyGet: 'pupil:history:get',
   /** renderer -> 主进程：同步面板视图模式（main/settings，settings 失焦不自动收起） */

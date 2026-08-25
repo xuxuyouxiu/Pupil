@@ -22,6 +22,10 @@ export const BALL_HOVER_SCALE = 1.1
 export const PANEL_WIDTH = 360
 export const PANEL_MAX_HEIGHT = 480
 
+/** 独立设置窗口尺寸（P1-2：面板内设置视图升级） */
+export const SETTINGS_WIDTH = 380
+export const SETTINGS_HEIGHT = 520
+
 /** 环形内存缓冲上限（每会话保留的事件数） */
 export const EVENT_RING_BUFFER_SIZE = 1000
 

@@ -4,7 +4,7 @@
  */
 import { BrowserWindow, screen, Display } from 'electron'
 import { join } from 'path'
-import { BALL_SIZE, PANEL_MAX_HEIGHT, PANEL_WIDTH } from '../shared/constants'
+import { BALL_SIZE, PANEL_MAX_HEIGHT, PANEL_WIDTH, SETTINGS_HEIGHT, SETTINGS_WIDTH } from '../shared/constants'
 import { ConfigStore } from './config'
 
 const isDev = process.env['ELECTRON_RENDERER_URL'] !== undefined
@@ -12,7 +12,10 @@ const isDev = process.env['ELECTRON_RENDERER_URL'] !== undefined
 export class WindowManager {
   private ball: BrowserWindow | null = null
   private panel: BrowserWindow | null = null
+  private settingsWin: BrowserWindow | null = null
   private panelHideTimer: NodeJS.Timeout | null = null
+  /** 应用退出中（区别于用户点设置窗口关闭钮：退出要真销毁，关闭钮只隐藏复用） */
+  private quitting = false
   /**
    * 面板当前视图模式：
    * - 'main'：会话/历史列表，失焦 300ms 自动收起（Raycast 式防误触）
@@ -195,6 +198,63 @@ export class WindowManager {
     }
   }
 
+  /**
+   * 独立设置窗口（P1-2）：面板内设置视图的升级替代入口。
+   * 常驻隐藏复用（不销毁）：保留滚动位置与表单状态，二次打开零创建开销；
+   * 失焦仅隐藏不销毁（设置窗口由用户显式关闭，不受面板防误触策略约束）。
+   */
+  openSettingsWindow(): void {
+    if (this.settingsWin && !this.settingsWin.isDestroyed()) {
+      this.settingsWin.show()
+      this.settingsWin.focus()
+      return
+    }
+    const display = screen.getPrimaryDisplay()
+    const area = display.workArea
+
+    const win = new BrowserWindow({
+      width: SETTINGS_WIDTH,
+      height: SETTINGS_HEIGHT,
+      show: false,
+      frame: false,
+      // 与面板同理：不透明窗口保 ClearType 清晰渲染（用户反馈文字发虚）
+      transparent: false,
+      resizable: false,
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      hasShadow: true,
+      backgroundColor: '#0d1117',
+      webPreferences: {
+        preload: join(__dirname, '../preload/index.js'),
+        backgroundThrottling: false,
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: false
+      }
+    })
+
+    // 居中于工作区（独立窗口不跟随球锚点）
+    win.setPosition(
+      Math.round(area.x + (area.width - SETTINGS_WIDTH) / 2),
+      Math.round(area.y + (area.height - SETTINGS_HEIGHT) / 2)
+    )
+
+    this.loadRenderer(win, 'panel/settings.html')
+    win.once('ready-to-show', () => win.show())
+    win.on('close', (e) => {
+      // 首次点关闭 → 隐藏复用；托盘退出走 destroyAll() 时 isDestroyed 前置已处理
+      if (!this.quitting) {
+        e.preventDefault()
+        win.hide()
+      }
+    })
+    this.settingsWin = win
+  }
+
+  closeSettingsWindow(): void {
+    if (this.settingsWin && !this.settingsWin.isDestroyed()) this.settingsWin.hide()
+  }
+
   closePanel(): void {
     if (this.panel && !this.panel.isDestroyed()) this.panel.close()
   }
@@ -227,7 +287,10 @@ export class WindowManager {
   }
 
   destroyAll(): void {
+    this.quitting = true
     this.closePanel()
+    if (this.settingsWin && !this.settingsWin.isDestroyed()) this.settingsWin.destroy()
+    this.settingsWin = null
     this.ball?.destroy()
   }
 }

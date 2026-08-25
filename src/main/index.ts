@@ -8,7 +8,8 @@ import { WindowManager } from './window-manager'
 import { TrayManager } from './tray'
 import { Notifier } from './notifier'
 import { AutoLaunch } from './auto-launch'
-import { ensureCliShim } from './paths'
+import { ensureCliShim, ensureCliOnPath } from './paths'
+import { FileHistoryStore } from './history-store'
 import { activateSessionWindow } from '../integrations/win32-window'
 import { IPC } from '../shared/ipc-channels'
 
@@ -34,6 +35,10 @@ function bootstrap(): void {
   const autoLaunch = new AutoLaunch(config)
 
   core.setNotifyExecutor(notifier.execute)
+
+  // P2-8 事件历史持久化：启动恢复 + 60s 节流落盘（有新事件才写）
+  core.registry.setHistoryStore(new FileHistoryStore())
+  const historySaver = setInterval(() => core.registry.saveHistory(), 60_000)
   // Toast 点击：精准跳转对应会话窗口（P2；失败由 activateSessionWindow 内部降级）
   notifier.setClickHandler((view) => {
     void activateSessionWindow(view)
@@ -121,6 +126,12 @@ function bootstrap(): void {
   )
   ipcMain.handle(IPC.hooksInstall, () => core.installHooks())
   ipcMain.handle(IPC.hooksUninstall, () => core.uninstallHooks())
+  // 独立设置窗口（P1-2）：面板内「查看接入指引」/ 设置按钮的升级入口
+  ipcMain.handle(IPC.settingsWindowOpen, () => {
+    windows.openSettingsWindow()
+    // 面板让位：避免两窗叠加遮挡（设置信息密度更高）
+    windows.closePanel()
+  })
   ipcMain.handle(IPC.historyGet, (_e, limit?: number) =>
     core.history(typeof limit === 'number' ? limit : undefined)
   )
@@ -136,7 +147,11 @@ function bootstrap(): void {
     core.start()
     // 打包版：写 %LOCALAPPDATA%/Pupil/bin/pupil.cmd（pupil send 命令，无需系统 Node）
     const binDir = ensureCliShim()
-    if (binDir) console.log(`[cli] pupil.cmd ready at ${binDir}`)
+    if (binDir) {
+      console.log(`[cli] pupil.cmd ready at ${binDir}`)
+      // P1-4：bin 目录注册进用户 PATH（幂等），任意终端直接敲 `pupil`
+      ensureCliOnPath(binDir)
+    }
   })
 
   // 单实例：再次启动时聚焦球窗
@@ -150,6 +165,8 @@ function bootstrap(): void {
   })
 
   app.on('before-quit', () => {
+    clearInterval(historySaver)
+    core.registry.saveHistory() // 退出前最后一次落盘（P2-8）
     core.stop()
     windows.destroyAll()
     tray.destroy()

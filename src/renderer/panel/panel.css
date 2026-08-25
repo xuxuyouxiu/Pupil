@@ -426,6 +426,17 @@ body,
   padding: 7px 12px;
   border-bottom: 1px solid var(--border-soft);
 }
+.history-row-clickable {
+  cursor: pointer;
+  transition: background 120ms ease-out;
+}
+.history-row-clickable:hover {
+  background: var(--surface-warm);
+}
+.history-jumped {
+  font-size: 10.5px;
+  color: var(--state-done);
+}
 .history-time {
   font-family: var(--font-mono);
   font-size: 10.5px;

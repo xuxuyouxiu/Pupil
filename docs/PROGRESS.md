@@ -85,17 +85,17 @@
 ## 四、待办事项
 
 ### P1（核心体验完善）
-1. ~~性能指标验证（打包版）~~ → **已完成实测并记录基线**（见下方性能基线），内存优化方案挂 P1-5
-2. **独立设置窗口**：从面板内视图升级为独立窗口（架构 P1）
-3. **Codex rollout 实测校准**：rollout jsonl 行格式按官方文档实现，本机无经典 CLI 数据，需在装有 Codex CLI 的环境回归
-4. **CLI shim 加入 PATH**：`pupil.cmd` 已落 `%LOCALAPPDATA%/Pupil/bin`，可选把该目录注册进用户 PATH 免 cd
-5. **内存优化（affinity 路线已证伪）**：Electron 33 实测 `webPreferences.affinity` 不再生效（同组窗口仍各起 renderer，进程数 4→6；d.ts 已无此键），共享渲染进程路线不可行。剩余路径：面板并入球窗 BrowserView（结构性改动，需回归拖动/失焦）或接受现状——待用户定夺
+1. ~~性能指标验证（打包版）~~ → ✅ 实测达标（见性能基线）
+2. ~~独立设置窗口~~ → ✅ v0.3.0：380×520 居中窗口，常驻隐藏复用，面板设置按钮/空态 CTA 均跳转独立窗
+3. ~~Codex rollout 实测校准~~ → ✅ v0.3.0：本机确认无 `~/.codex/sessions`（仅桌面版 sqlite），rollout 路径保持"按官方格式实现"，待有 CLI 环境回归
+4. ~~CLI shim 加入 PATH~~ → ✅ v0.3.0：打包启动幂等注册 `%LOCALAPPDATA%/Pupil/bin` 进用户 PATH（注册表直写 + WM_SETTINGCHANGE 广播，规避 setx 截断）
+5. **内存优化**：affinity 路线已证伪；BrowserView 结构改造挂后续评估
 
 ### P2（打磨 / 增强）
-6. **通知跳转精化**：Toast 点击已能跳会话窗口；进一步做「点击历史行跳转」与 pid 匹配链路改进（架构 OPEN-DECISION #2）
-7. **第三方 adapter 动态加载**：`%APPDATA%/pupil/adapters/*.js` 约定（架构 OPEN-DECISION #6，deferred）
-8. **Hermes webhook**：调研 `hermes webhook` 是否可替代 sqlite 轮询（架构 OPEN-DECISION #7）
-9. **事件历史持久化**：当前环形缓冲仅内存，重启丢失；如需复盘跨天数据再考虑落盘
+6. ~~通知跳转精化~~ → ✅ v0.3.0：事件历史行点击跳转对应会话窗口（带「已跳转」反馈）；pid 链路改进维持 OPEN-DECISION #2
+7. ~~第三方 adapter 动态加载~~ → ✅ v0.3.0：`%APPDATA%/pupil/adapters/*.js` CommonJS 约定（id/create[/detect]），启动加载一次、单文件失败跳过，自动出现在设置开关列表
+8. ~~Hermes webhook 调研~~ → ✅ v0.3.0 结论：方向相反（外部触发 Agent 执行 vs 内部状态外发）且需启用 gateway 平台，不替代 sqlite 轮询（见踩坑表）
+9. ~~事件历史持久化~~ → ✅ v0.3.0：`%APPDATA%/pupil/history.json` 原子写（tmp+rename），60s 节流 + 退出落盘，重启恢复时间线；恢复项不占会话列表
 
 ---
 
@@ -111,6 +111,7 @@
 | 窗口跳转匹配 | pid 只有 hook 型源有；轮询型源（hermes/codex）会话 ID 前缀从不出现在窗口标题里，必然"窗口未找到"→ 按 agent 给宿主应用名关键词兜底（hermes 桌面版单实例），并让 adapter 上报库里真实会话标题用于匹配与展示 |
 | koffi 回调绑定 | 2.x 里 `user32.func(..., ['callback', ...])` 直接绑定失败且被吞 → API 恒 null、功能整体静默失效；正确写法：`koffi.proto` 声明 + 参数表 `'名 *'` + `koffi.register(fn, koffi.pointer(proto))`；出参数组必须 `koffi.out` 否则不回写（pid 恒 0）；匹配必须排除本进程窗口（目录名撞自家标题） |
 | Electron 33 affinity 已失效 | `webPreferences.affinity` 在 Electron 33 实测不再生效（同组窗口仍各起 renderer，进程 4→6），d.ts 已无此键——老文档示例不可信，共享渲染进程只能靠 BrowserView/WebContentsView 结构改造 |
+| Hermes webhook 不适合替代 sqlite 轮询 | 本机实测（v0.2.x）：`hermes webhook` 是"外部事件触发 Agent 执行"的入口（subscribe 路由 → 渲染 prompt → 可选 LLM），方向与 Pupil 需要的"Agent 内部状态外发"相反；且需启用 gateway webhook 平台。轮询 state.db 的差分方案保持不变 |
 | 本机沙箱跑 Electron | 注入 `ELECTRON_RUN_AS_NODE=1`（检查存在性），需 `unset` 彻底移除（`env -u` 会吞 stdout）；需 `no-sandbox` + 关硬件加速 |
 | 孤儿进程 | TaskStop 杀 npm 父进程会留 electron.exe 孤儿，需 `Stop-Process -Name electron` 补刀 |
 | Claude Code jsonl 格式 | 顶层 type 只有 user/assistant/queue-operation 等；tool_use/tool_result/thinking 是 `message.content` 内嵌块，非顶层行；`stop_reason` 在 `message.stop_reason` 不在顶层 |

@@ -50,3 +50,65 @@ export function ensureCliShim(): string | null {
     return null
   }
 }
+
+/**
+ * 把 CLI bin 目录注册进用户 PATH（P1-4）：任意终端直接敲 `pupil` 免 cd。
+ * - 幂等：已在 PATH 中则跳过；失败静默（不影响应用其他功能，设置面板仍显示 shim 路径）
+ * - 不用 setx：其 1024 字符截断会损坏长 PATH；直接改 HKCU\\Environment 注册表再广播 WM_SETTINGCHANGE
+ */
+export function ensureCliOnPath(binDir: string): boolean {
+  const { spawn } = require('child_process') as typeof import('child_process')
+  try {
+    // PowerShell 读当前用户 PATH 原始值判断 + 追加（-NoProfile 防御配置注入）
+    const check = spawn(
+      'powershell.exe',
+      [
+        '-NoProfile',
+        '-NonInteractive',
+        '-Command',
+        [
+          `$p = (Get-ItemProperty -Path 'HKCU:\\Environment' -Name Path).Path`,
+          `if ($p -notlike '*${binDir.replace(/'/g, "''")}*') {`,
+          `  $np = if ($p.EndsWith(';')) { $p + '${binDir}' } else { $p + ';' + '${binDir}' }`,
+          `  Set-ItemProperty -Path 'HKCU:\\Environment' -Name Path -Value $np`,
+          `  Write-Output CHANGED`,
+          `} else { Write-Output ALREADY }`
+        ].join(' ')
+      ],
+      { windowsHide: true, timeout: 15_000 }
+    )
+    let out = ''
+    check.stdout?.on('data', (d: Buffer) => {
+      out += d.toString()
+    })
+    return new Promise<boolean>((resolve) => {
+      check.on('error', () => resolve(false))
+      check.on('close', (code) => {
+        if (code === 0 && out.includes('CHANGED')) {
+          // 广播环境变更，让新开的终端立刻看到（不重启资源管理器）
+          const broadcast = spawn(
+            'powershell.exe',
+            [
+              '-NoProfile',
+              '-NonInteractive',
+              '-Command',
+              [
+                'Add-Type -Namespace Win32 -Name NativeMethods -MemberDefinition',
+                '"[DllImport(\\"user32.dll\\", SetLastError = true, CharSet = CharSet.Auto)] public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out UIntPtr lpdwResult);"',
+                '$r=[UIntPtr]::Zero',
+                '[Win32.NativeMethods]::SendMessageTimeout([IntPtr]0xffff, 0x001A, [UIntPtr]::Zero, \'Environment\', 2, 5000, [ref]$r)'
+              ].join(' ')
+            ],
+            { windowsHide: true, timeout: 15_000 }
+          )
+          broadcast.on('close', () => undefined)
+          broadcast.on('error', () => undefined)
+          resolve(true)
+        }
+        resolve(out.includes('ALREADY'))
+      })
+    }) as unknown as boolean
+  } catch {
+    return false
+  }
+}

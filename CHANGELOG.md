@@ -2,6 +2,23 @@
 
 本文件记录 Pupil 的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.3.0] - 2026-08-25
+
+### 新增
+- **独立设置窗口（P1）**：设置从面板内视图升级为独立窗口（380×520，屏幕居中、置顶、不透明保 ClearType）；常驻隐藏复用——关闭仅隐藏，二次打开零创建开销且保留滚动/表单状态；面板「设置」按钮与空态「查看接入指引」均跳转独立窗并让位收起面板
+- **CLI 全局可用（P1）**：打包版启动时把 `%LOCALAPPDATA%/Pupil/bin` 幂等注册进用户 PATH——任意终端直接敲 `pupil send ...` 免 cd；实现走 HKCU\Environment 注册表直写 + WM_SETTINGCHANGE 广播（规避 setx 1024 字符截断损坏长 PATH 的风险）
+- **事件历史行点击跳转（P2）**：底部「事件历史」页签每行可点击，直接激活对应会话窗口（复用 win32 激活链路），跳转后显示 2s「已跳转」反馈
+- **第三方 adapter 动态加载（P2，OPEN-DECISION #6 落地）**：`%APPDATA%/pupil/adapters/*.js` 放 CommonJS 模块（导出 `id`/`create`[/`detect`]，实现 AgentAdapter 接口）即被自动加载，出现在设置面板开关列表；启动加载一次，单文件失败仅告警不影响内置 adapter
+- **事件历史持久化（P2）**：环形缓冲投影落盘 `%APPDATA%/pupil/history.json`（原子写 tmp+rename），60s 节流 + 退出前保存；重启后时间线完整恢复。恢复的历史只进时间线不占会话列表，会话收到新事件才重新出现
+- `scripts/probe-win32.mjs` 窗口激活诊断探针（v0.2.4 引入，此处归档说明）
+
+### 调研结论
+- **Hermes webhook 不替代 sqlite 轮询（OPEN-DECISION #7 关闭）**：本机实测 `hermes webhook` 是"外部事件触发 Agent 执行"的入口（路由 → 渲染 prompt → 可选 LLM 执行），方向与 Pupil 需要的"Agent 内部状态外发"相反，且需启用 gateway webhook 平台——维持 state.db 差分轮询
+- **Codex rollout 校准**：本机确认无 `~/.codex/sessions/`（仅桌面版 sqlite），rollout jsonl 解析保持按官方格式实现，待真实 CLI 环境回归
+
+### 变更
+- 版本号 0.2.5 → 0.3.0（功能版本：独立设置窗口 + 动态 adapter 两项结构性新增）
+
 ## [0.2.5] - 2026-08-24
 
 ### 新增

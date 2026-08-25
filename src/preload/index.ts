@@ -26,6 +26,8 @@ export interface PupilApi {
   ballDragEnd(): void
   /** 打开设置（MVP 复用面板） */
   openSettings(): Promise<void>
+  /** 打开独立设置窗口（P1-2：面板内设置视图的升级入口，面板让位） */
+  openSettingsWindow(): Promise<void>
   /** 设置面板：查询/更新配置与 adapter 状态 */
   getSettings(): Promise<SettingsSnapshot>
   setSettings(patch: {
@@ -69,6 +71,7 @@ const api: PupilApi = {
   ballDragMove: (dx, dy) => ipcRenderer.send(IPC.ballDragMove, dx, dy),
   ballDragEnd: () => ipcRenderer.send(IPC.ballDragEnd),
   openSettings: () => ipcRenderer.invoke(IPC.settingsOpen),
+  openSettingsWindow: () => ipcRenderer.invoke(IPC.settingsWindowOpen),
   getSettings: () => ipcRenderer.invoke(IPC.settingsGet),
   setSettings: (patch) => ipcRenderer.invoke(IPC.settingsSet, patch),
   setAdapterEnabled: (id, enabled) => ipcRenderer.invoke(IPC.adapterSetEnabled, id, enabled),

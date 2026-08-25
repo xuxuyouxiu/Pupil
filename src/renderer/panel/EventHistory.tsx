@@ -57,6 +57,8 @@ function EventIcon({ type }: { type: AgentEventType }) {
 
 export function EventHistory() {
   const [items, setItems] = useState<SessionHistoryItem[] | null>(null)
+  /** 点击行后 2s 内显示「已跳转」反馈 */
+  const [jumped, setJumped] = useState<string | null>(null)
 
   const load = useCallback(async (): Promise<void> => {
     try {
@@ -73,6 +75,17 @@ export function EventHistory() {
     return () => clearInterval(t)
   }, [load])
 
+  /** P2-5：点击历史行 -> 跳转对应会话窗口（复用窗口激活链路） */
+  const jumpToSession = async (key: string): Promise<void> => {
+    try {
+      await window.pupil.activateWindow(key)
+      setJumped(key)
+      setTimeout(() => setJumped(null), 2000)
+    } catch {
+      /* 激活失败静默：会话可能已被清理 */
+    }
+  }
+
   if (items === null) {
     return <div className="history-empty">加载中…</div>
   }
@@ -88,13 +101,19 @@ export function EventHistory() {
   return (
     <ul className="history-list">
       {items.map((it, i) => (
-        <li key={`${it.key}-${it.timestamp}-${i}`} className="history-row" title={it.sessionId}>
+        <li
+          key={`${it.key}-${it.timestamp}-${i}`}
+          className="history-row history-row-clickable"
+          title={`点击跳转 ${it.title ?? it.sessionId.slice(0, 12)} 窗口`}
+          onClick={() => void jumpToSession(it.key)}
+        >
           <span className="history-time">{formatTime(it.timestamp)}</span>
           <EventIcon type={it.eventType} />
           <div className="history-main">
             <div className="history-title">
               <span className="history-name">{it.title ?? it.sessionId.slice(0, 12)}</span>
               <span className="agent-tag">{AGENT_LABEL[it.agentType] ?? it.agentType}</span>
+              {jumped === it.key && <span className="history-jumped">已跳转</span>}
             </div>
             <div className={`history-desc ${EVENT_CLASS[it.eventType]}`}>
               {EVENT_VERB[it.eventType]}

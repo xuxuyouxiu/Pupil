@@ -6,7 +6,6 @@ import { useEffect, useMemo, useState } from 'react'
 import { SessionView, toDisplayState, DisplayState, DISPLAY_PRIORITY } from '../../shared/events'
 import { useSessions } from '../ball/use-sessions'
 import { SessionRow } from './SessionRow'
-import { Settings } from './Settings'
 import { EventHistory } from './EventHistory'
 import { Moon, Settings as SettingsIcon, Radar, History } from '../shared/icons'
 
@@ -51,7 +50,6 @@ export function Panel() {
   const sessions = useSessions()
   const [tab, setTab] = useState<Tab>('sessions')
   const [dnd, setDnd] = useState(false)
-  const [showSettings, setShowSettings] = useState(false)
 
   useEffect(() => {
     void window.pupil.getDnd().then(setDnd)
@@ -59,10 +57,10 @@ export function Panel() {
     return off
   }, [])
 
-  // 视图模式同步到主进程：设置视图中途失焦不自动收起面板（P0 修复）
+  // 面板固定主列表模式（设置已升级为独立窗口 P1-2，面板内视图仅保留兼容回退）
   useEffect(() => {
-    window.pupil.setPanelMode(showSettings ? 'settings' : 'main')
-  }, [showSettings])
+    window.pupil.setPanelMode('main')
+  }, [])
 
   const summary = useMemo(() => summarize(sessions), [sessions])
   const sorted = useMemo(
@@ -73,10 +71,6 @@ export function Panel() {
       ),
     [sessions]
   )
-
-  if (showSettings) {
-    return <Settings onBack={() => setShowSettings(false)} />
-  }
 
   return (
     <div className="panel">
@@ -105,7 +99,7 @@ export function Panel() {
           <button
             className="icon-btn"
             aria-label="设置"
-            onClick={() => setShowSettings(true)}
+            onClick={() => void window.pupil.openSettingsWindow()}
           >
             <SettingsIcon size={16} />
           </button>
@@ -121,7 +115,7 @@ export function Panel() {
             <Radar size={32} strokeWidth={1.5} />
             <p className="empty-title">未检测到运行中的 Agent 会话</p>
             <p className="empty-sub">支持监控 Claude Code、Codex、Hermes 等工具的后台会话</p>
-            <button className="empty-cta" onClick={() => setShowSettings(true)}>
+            <button className="empty-cta" onClick={() => void window.pupil.openSettingsWindow()}>
               查看接入指引
             </button>
           </div>
