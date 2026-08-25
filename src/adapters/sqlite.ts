@@ -88,6 +88,18 @@ export class SqliteDb {
     return new SqliteDb(f, dbPtr[0])
   }
 
+  /**
+   * schema 守卫（OD#3）：探测表是否存在。
+   * 上游（codex/hermes）版本升级改表结构时，adapter 据此优雅降级而非反复查询报错。
+   */
+  tableExists(name: string): boolean {
+    if (!this.db) return false
+    const rows = this.query(
+      `SELECT name FROM sqlite_master WHERE type='table' AND name='${name.replace(/'/g, "''")}'`
+    )
+    return rows.length > 0
+  }
+
   /** 执行查询，返回类型化行数组（单次连接内完成） */
   query(sql: string): SqlRow[] {
     if (!this.db) return []

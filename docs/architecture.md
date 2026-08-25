@@ -404,13 +404,13 @@ SessionView.pid 的获取路径：Claude Code hook 的 PowerShell 脚本可用 G
 | # | 事项 | 类型 | 状态 | 说明与责任人建议 |
 |---|------|------|------|------------------|
 | 1 | Tauri 迁移路径 | 架构预留 | Open | 若未来安装 Rust 工具链且内存指标不达标，renderer（React）代码可整体复用迁移至 Tauri；adapter/core 为纯 TS 亦可复用。触发条件：内存指标（7.3）连续两个版本未达标 |
-| 2 | Session 到窗口的映射策略 | 设计未决 | Open | PID 精确但依赖上报方；标题匹配兼容广但脆弱（终端标签标题可配置）。MVP 实现 PID 优先 + 标题兜底；若跳转准确率低于 90% 再引入进程树追踪（koffi 读父进程链）。需与 PM 确认验收标准 |
-| 3 | Codex 桌面版 sqlite schema 无官方文档 | 数据源风险 | Open | state_5.sqlite 的表结构随版本升级可能变更。缓解：adapter 内做 schema 探测 + 版本守卫，失败时优雅降级为"仅会话发现"。需在 Codex 每次升级后回归 |
-| 4 | Win10 透明窗口残影 | 平台已知坑 | Mitigated（待实测） | 规避方案见第 2 节；需在用户目标机（Win10）上专项验证，列入 Phase 2 冒烟清单 |
-| 5 | HTTP 端点安全边界 | 安全 | Open | 已设计 127.0.0.1 + Bearer token + 限速；token 文件权限控制与防误配（用户把 token 提交到仓库）需要使用说明。安全评审在 Phase 2 完成 |
-| 6 | 第三方 adapter 动态加载 | 范围外 | Deferred | MVP 不做动态加载，仅源码内置 5 个 adapter；外部扩展协议（目录约定 + JS 模块签名）留待 v1.x |
-| 7 | Hermes webhook 机制 | 数据源调研 | Open | `hermes webhook` 子命令存在但文档未查证完整，若其支持 HTTP 回调可替代 sqlite 轮询获得更精确事件。Phase 2 实装 Hermes adapter 时调研 |
-| 8 | 多显示器与 DPI 缩放 | 平台风险 | Open | 球位置持久化需记录显示器标识；Windows 缩放 125%/150% 下球坐标换算需实测。列入设计验收 |
+| 2 | Session 到窗口的映射策略 | 设计未决 | Partial（v0.2.3/v0.2.4） | MVP 实现 PID 优先 + 标题兜底 + 宿主应用名兜底（hermes/codex 单实例应用）；koffi 进程树追踪留待跳转准确率不达标时引入。轮询型源只能定位到宿主应用为已知边界 |
+| 3 | Codex 桌面版 sqlite schema 无官方文档 | 数据源风险 | **Mitigated（v0.3.3）** | codex/hermes adapter 已加 schema 守卫：表缺失时优雅降级为不监控并告警一次，不再反复查询报错。上游每次升级后仍需人工回归字段语义 |
+| 4 | Win10 透明窗口残影 | 平台已知坑 | Mitigated | 悬浮球保留透明（本机 Win10 实测无残影问题）；面板/设置窗口已改不透明以保 ClearType 文字渲染 |
+| 5 | HTTP 端点安全边界 | 安全 | Mitigated（MVP） | 127.0.0.1 + Bearer token + 限速已实装；token 文件权限控制与防误配说明待 README 安全章节补充 |
+| 6 | 第三方 adapter 动态加载 | 范围外 | **Resolved（v0.3.0）** | `%APPDATA%/pupil/adapters/*.js` CommonJS 约定落地：导出 id/create[/detect] 即自动加载进设置开关列表 |
+| 7 | Hermes webhook 机制 | 数据源调研 | **Resolved（v0.3.0，结论：不采用）** | 本机实测 `hermes webhook` 是"外部事件触发 Agent 执行"入口，方向与 Pupil 需要的"Agent 内部状态外发"相反，且需启用 gateway 平台——维持 state.db 差分轮询 |
+| 8 | 多显示器与 DPI 缩放 | 平台风险 | Open | 当前球位置按全局坐标持久化（Electron 自动处理 DPI 虚拟坐标）；拔掉显示器球可能落在屏外——右键托盘「重置悬浮球位置」可作为兜底（待实现） |
 | 9 | 端口冲突与多用户场景 | 边界 | Mitigated | 默认端口占用时自动探测递增并写入 endpoint.json；多用户同机（远程桌面多会话）场景 MVP 不支持，README 声明 |
 | 10 | 产品命名与品牌 | 范围外 | **Resolved** | 用户确认产品名为 **Pupil**（瞳孔——黑色球体即眼睛的瞳孔，双关 AI "学生"在学习）。已更新全部文档 |
 

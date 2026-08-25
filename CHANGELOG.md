@@ -2,6 +2,17 @@
 
 本文件记录 Pupil 的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.3.3] - 2026-08-25
+
+### 新增
+- **README.md**：项目门面——特性、下载、快速开始、`pupil send` 接入示例（任意程序可上报状态）、第三方 adapter 编写指南
+- **SQLite schema 守卫（OD#3 加固）**：`SqliteDb.tableExists()`；codex adapter 缺 `threads` 表时优雅降级为不监控（告警一次），hermes adapter 缺 `sessions/messages` 表时同样降级——上游工具升级改表结构不再导致反复查询报错
+- 路径硬编码全库排查：源码零硬编码盘符/用户目录，全部经 `os.homedir()` / `%LOCALAPPDATA%` / `%APPDATA%` 动态解析，任意机器环境可直接使用
+
+### 文档
+- 架构文档 OPEN-DECISIONS 登记册状态同步：#3 Mitigated、#6 Resolved、#7 Resolved（不采用）、#2 Partial 等
+- PROGRESS 总览表过时行全面刷新（事件历史/设置窗口/性能指标等 15 行）
+
 ## [0.3.2] - 2026-08-25
 
 ### 修复

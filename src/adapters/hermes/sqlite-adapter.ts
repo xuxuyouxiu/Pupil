@@ -65,6 +65,11 @@ export class HermesSqliteAdapter implements AgentAdapter {
     const db = SqliteDb.open(dbPath())
     if (!db) return
     try {
+      // schema 守卫（OD#3）：上游改版缺表时优雅降级为不监控
+      if (!db.tableExists('sessions') || !db.tableExists('messages')) {
+        console.warn('[hermes-sqlite] state.db missing sessions/messages tables (schema changed?) — degraded')
+        return
+      }
       // 记录当前最大消息 id，避免回放历史（防通知刷屏）
       const mx = db.query('SELECT MAX(id) m FROM messages') as unknown as { m: number | null }[]
       this.lastMessageId = Number(mx[0]?.m ?? 0)

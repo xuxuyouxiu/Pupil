@@ -117,6 +117,8 @@ export class CodexLogAdapter implements AgentAdapter {
   private rollouts = new Map<string, RolloutTail>()
   private mode: 'sqlite' | 'rollout' | 'none' = 'none'
   private stopped = false
+  /** schema 降级告警只打一次 */
+  private schemaWarned = false
 
   async start(emit: (e: AgentEvent) => void): Promise<void> {
     this.emit = emit
@@ -158,6 +160,14 @@ export class CodexLogAdapter implements AgentAdapter {
     const db = SqliteDb.open(sqlitePath())
     if (!db) return
     try {
+      // schema 守卫（OD#3）：threads 表缺失（上游改版）时优雅降级为不监控，不做无效查询
+      if (!db.tableExists('threads')) {
+        if (!this.schemaWarned) {
+          console.warn('[codex-log] state_5.sqlite has no threads table (schema changed?) — degraded')
+          this.schemaWarned = true
+        }
+        return
+      }
       const now = Date.now()
       const rows = db.query(
         `SELECT id, cwd, title, updated_at_ms, tokens_used FROM threads WHERE archived=0 ORDER BY updated_at_ms DESC`
