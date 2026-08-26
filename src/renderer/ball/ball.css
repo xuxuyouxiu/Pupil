@@ -131,76 +131,107 @@ body {
   }
 }
 
-/* ---- 眼睛动画 ---- */
+/* ---- 眼睛动画（v0.4.0 x.ai 风格胶囊眼） ---- */
 .eye-layer {
   transform-box: fill-box;
   transform-origin: center;
 }
 
-/* 瞳孔游移：初始化时快速左右搜寻 */
-.eye-dart .pupil {
-  animation: pupil-dart 0.5s ease-in-out infinite alternate;
-  transform-box: fill-box;
-  transform-origin: center;
-}
-@keyframes pupil-dart {
-  from {
-    transform: translateX(-2.4px);
-  }
-  to {
-    transform: translateX(2.4px);
-  }
+/* 注视平移：光标驱动，短过渡跟手又柔（bloub 测量：指数缓出、从不回弹） */
+.eye-gaze {
+  transition: transform 130ms cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: transform;
 }
 
-/* 运行中：瞳孔缓慢游移 */
-.eye-blink-r .pupil {
-  animation: pupil-drift 3.6s ease-in-out infinite alternate;
-  transform-box: fill-box;
-  transform-origin: center;
-}
-@keyframes pupil-drift {
-  from {
-    transform: translateX(-1.2px);
-  }
-  to {
-    transform: translateX(1.4px);
-  }
+/* 胶囊眼几何属性过渡：深度压缩时宽度平滑变化 */
+.bot-eye {
+  transition: x 260ms ease-out, width 260ms ease-out;
 }
 
-/* 眨眼：running 每 ~5s 一次 */
-.eye-blink-r {
-  animation: blink-running 5s linear infinite;
+/* 状态切换掩蔽：新内容以闭眼姿态出现再睁开（一次性 0.24s，原版实测 0.2s） */
+.eye-swap {
   transform-box: fill-box;
   transform-origin: center;
+  animation: eye-open-once 240ms ease-out 1;
 }
-@keyframes blink-running {
-  0%,
-  90%,
+@keyframes eye-open-once {
+  0%, 40% {
+    transform: scaleY(0.06);
+  }
   100% {
     transform: scaleY(1);
   }
-  94%,
-  96% {
-    transform: scaleY(0.08);
-  }
 }
 
-/* 等待输入：更频繁眨眼（催促） */
-.eye-blink-w {
-  animation: blink-waiting 2.2s linear infinite;
+/* 循环眨眼节奏：running 从容 ~5s */
+.blink-run {
   transform-box: fill-box;
   transform-origin: center;
+  animation: blink-run 5s linear infinite;
 }
-@keyframes blink-waiting {
-  0%,
-  82%,
-  100% {
-    transform: scaleY(1);
-  }
-  88%,
-  92% {
-    transform: scaleY(0.08);
-  }
+@keyframes blink-run {
+  0%, 91%, 100% { transform: scaleY(1); }
+  94%, 96% { transform: scaleY(0.06); }
+}
+
+/* waiting 频繁眨眼（催促感保留） */
+.blink-wait {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: blink-wait 2.2s linear infinite;
+}
+@keyframes blink-wait {
+  0%, 82%, 100% { transform: scaleY(1); }
+  87%, 92% { transform: scaleY(0.06); }
+}
+
+/* idle 伪随机眨眼：7.3s 一轮两次、落点不均匀（机械等间隔一眼假，bloub 同款思路） */
+.blink-idle {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: blink-idle 7.3s linear infinite;
+}
+@keyframes blink-idle {
+  0%, 12%, 15.5%, 44%, 46.5%, 100% { transform: scaleY(1); }
+  13.5%, 14% { transform: scaleY(0.05); }
+  45.2%, 45.7% { transform: scaleY(0.05); }
+}
+
+/* 无光标时的自动生命感 —— 待机漂移：目光缓慢小范围游移（幅度克制，原版待机核心） */
+.gaze-wander {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: gaze-wander 11s ease-in-out infinite;
+}
+@keyframes gaze-wander {
+  0%, 100% { transform: translate(0px, 0px); }
+  18% { transform: translate(0.9px, -0.35px); }
+  36% { transform: translate(-0.8px, 0.25px); }
+  57% { transform: translate(0.55px, 0.5px); }
+  78% { transform: translate(-0.5px, -0.45px); }
+}
+
+/* 思考扫视：像在读代码，右侧稍作停顿再扫回 */
+.gaze-scan {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: gaze-scan 2.8s ease-in-out infinite;
+}
+@keyframes gaze-scan {
+  0%, 100% { transform: translateX(-1.5px); }
+  45%, 52% { transform: translateX(1.7px); }
+  95% { transform: translateX(-1.5px); }
+}
+
+/* 初始化急切游移：快速搜寻 */
+.gaze-dart {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: gaze-dart 0.9s ease-in-out infinite alternate;
+}
+@keyframes gaze-dart {
+  from { transform: translateX(-1.8px); }
+  to { transform: translateX(1.8px); }
 }
 
 /* 断连：z 飘出 */
@@ -224,85 +255,16 @@ body {
   }
 }
 
-/* ---- v0.3.6 动效增强 ---- */
-
-/* 待机：周期性醒来张望（~7s 一轮：睡 4s → 睁眼左看 → 右看 → 睡回） */
-.idle-wake {
-  transform-box: fill-box;
-  transform-origin: center;
-  opacity: 0;
-  animation: idle-wake-cycle 7s ease-in-out infinite;
+/* ---- v0.4.0 彗星轨道（running/initializing 状态环）----
+   头部亮点 + 双层渐隐尾绕球旋转（bloub 测量：彗星态点不动、尾绕行） */
+.comet-orbit {
+  transform-box: view-box;
+  transform-origin: 28px 28px;
+  animation: comet-spin 2.6s linear infinite;
 }
-@keyframes idle-wake-cycle {
-  0%,
-  56% {
-    opacity: 0; /* 睡着：睁眼层不可见 */
-    transform: scaleY(0.1);
-  }
-  60%,
-  64% {
-    opacity: 1; /* 醒来 */
-    transform: scaleY(1);
-  }
-  68% {
-    transform: translateX(-2.5px) scaleY(1); /* 左看 */
-  }
-  76% {
-    transform: translateX(2.5px) scaleY(1); /* 右看 */
-  }
-  84% {
-    transform: translateX(0) scaleY(0.9);
-  }
-  90%,
-  100% {
-    opacity: 0; /* 睡回 */
-    transform: scaleY(0.1);
-  }
-}
-/* 睡着的眯眼在醒来时段隐藏（与睁眼交替） */
-.idle-sleep-l,
-.idle-sleep-r {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: idle-sleep-cycle 7s ease-in-out infinite;
-}
-@keyframes idle-sleep-cycle {
-  0%,
-  55% {
-    opacity: 1;
-    transform: scaleY(1);
-  }
-  58%,
-  88% {
-    opacity: 0;
-    transform: scaleY(0.4); /* 闭眼线淡出，让位给睁眼 */
-  }
-  92%,
-  100% {
-    opacity: 1;
-    transform: scaleY(1);
-  }
-}
-
-/* 思考（running）：瞳孔组左右扫视，像在读代码/推理，节奏比 drift 更明显 */
-.think-scan {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: think-scan 2.8s ease-in-out infinite;
-}
-@keyframes think-scan {
-  0%,
-  100% {
-    transform: translateX(-1.6px);
-  }
-  45% {
-    transform: translateX(1.8px);
-  }
-  50% {
-    transform: translateX(1.8px); /* 右侧稍作停顿再扫回 */
-  }
-  95% {
-    transform: translateX(-1.6px);
+@keyframes comet-spin {
+  to {
+    transform: rotate(360deg);
   }
 }
 

@@ -39,6 +39,9 @@ export const IPC = {
   /** 主进程 -> renderer：请求播放音效（type: done/waiting/error/timeout/offline） */
   soundPlay: 'pupil:sound:play',
 
+  /** 主进程 -> 球窗：全局光标相对球心的单位方向 {gx,gy}（眼神跟随，死区内为 0,0） */
+  gazeUpdate: 'pupil:gaze:update',
+
   /** renderer -> 主进程：请求激活某会话对应窗口 */
   windowActivate: 'pupil:window:activate',
 

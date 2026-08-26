@@ -5,6 +5,7 @@ import { app, ipcMain, BrowserWindow, Menu } from 'electron'
 import { ConfigStore } from './config'
 import { MonitoringCore } from './monitoring-core'
 import { WindowManager } from './window-manager'
+import { GazeTracker } from './gaze-tracker'
 import { TrayManager } from './tray'
 import { Notifier } from './notifier'
 import { AutoLaunch } from './auto-launch'
@@ -33,6 +34,8 @@ function bootstrap(): void {
   const notifier = new Notifier(() => windows.ballWindow, config)
   const tray = new TrayManager(core, windows)
   const autoLaunch = new AutoLaunch(config)
+  // 眼神跟随：全局光标方向 → 球窗（GrokBot 式「它活着」）
+  const gaze = new GazeTracker(() => windows.ballWindow)
 
   core.setNotifyExecutor(notifier.execute)
 
@@ -143,6 +146,7 @@ function bootstrap(): void {
 
   app.whenReady().then(() => {
     windows.createBallWindow()
+    gaze.start()
     tray.create()
     core.start()
     // 打包版：写 %LOCALAPPDATA%/Pupil/bin/pupil.cmd（pupil send 命令，无需系统 Node）
@@ -165,6 +169,7 @@ function bootstrap(): void {
   })
 
   app.on('before-quit', () => {
+    gaze.stop()
     clearInterval(historySaver)
     core.registry.saveHistory() // 退出前最后一次落盘（P2-8）
     core.stop()

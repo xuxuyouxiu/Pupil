@@ -56,7 +56,9 @@ function ringAnimClass(state: DisplayState): string {
   }
 }
 
-/** 按会话绘制分段弧；>5 会话时合并为单色环 */
+/** 按会话绘制分段弧；>5 会话时合并为单色环。
+ *  v0.4.0：running/initializing 不再是静态弧——改为「彗星轨道」：
+ *  一个亮点拖着渐隐尾巴绕球转（参考 bloub 对 x.ai comet 态的测量：点不动、尾绕行） */
 function RingSegments({ views }: { views: SessionView[] }) {
   // 注意：所有环都必须显式指定 cx/cy=28（SVG 默认圆心是 (0,0)/viewBox 左上角，
   // 漏写会导致弧线画到窗口角落——曾因此出现"球顶两段悬空弧线"）
@@ -64,11 +66,12 @@ function RingSegments({ views }: { views: SessionView[] }) {
   const CY = 28
   if (views.length === 0) {
     return (
-      <circle cx={CX} cy={CY} r={R} fill="none" stroke="var(--state-offline)" strokeWidth={1.6} opacity={0.5} />
+      <circle cx={CX} cy={CY} r={R} fill="none" stroke="var(--state-offline)" strokeWidth={1.4} opacity={0.5} />
     )
   }
   if (views.length > MAX_SEGMENTS) {
     const agg = aggregateState(views)
+    if (agg === 'running' || agg === 'initializing') return <Comet delay={0} />
     return (
       <circle
         cx={CX}
@@ -76,7 +79,7 @@ function RingSegments({ views }: { views: SessionView[] }) {
         r={R}
         fill="none"
         stroke={STATE_COLOR[agg]}
-        strokeWidth={3}
+        strokeWidth={1.8}
         className={ringAnimClass(agg)}
       />
     )
@@ -86,6 +89,10 @@ function RingSegments({ views }: { views: SessionView[] }) {
     <>
       {views.map((view, i) => {
         const state = toDisplayState(view)
+        if (state === 'running' || state === 'initializing') {
+          // 多个思考中的 agent 各自一颗彗星，相位错开
+          return <Comet key={view.key} delay={-i * 0.55} />
+        }
         const color = STATE_COLOR[state]
         const offset = CIRC / 4 - i * (len + SEG_GAP)
         return (
@@ -96,7 +103,7 @@ function RingSegments({ views }: { views: SessionView[] }) {
             r={R}
             fill="none"
             stroke={color}
-            strokeWidth={3}
+            strokeWidth={1.8}
             strokeLinecap="round"
             strokeDasharray={`${len} ${CIRC - len}`}
             strokeDashoffset={offset}
@@ -105,6 +112,35 @@ function RingSegments({ views }: { views: SessionView[] }) {
         )
       })}
     </>
+  )
+}
+
+/** 彗星轨道：头部亮点 + 双层渐隐尾，绕球心旋转（delay 秒相位差，负值即错开） */
+function Comet({ delay }: { delay: number }) {
+  return (
+    <g className="comet-orbit" style={{ animationDelay: `${delay}s` }}>
+      {/* 尾巴外层：长而淡 */}
+      <path
+        d="M 27.9 1.2 A 26.8 26.8 0 0 1 48.9 10.6"
+        fill="none"
+        stroke="var(--state-running)"
+        strokeWidth={1.1}
+        strokeLinecap="round"
+        opacity={0.28}
+      />
+      {/* 尾巴内层：短而亮（靠近头部更实） */}
+      <path
+        d="M 27.95 1.7 A 26.3 26.3 0 0 1 41.2 7.3"
+        fill="none"
+        stroke="var(--state-running)"
+        strokeWidth={1.6}
+        strokeLinecap="round"
+        opacity={0.6}
+      />
+      {/* 头部亮点 + 微光晕 */}
+      <circle cx={28} cy={3.5} r={2.3} fill="var(--state-running)" />
+      <circle cx={28} cy={3.5} r={4} fill="var(--state-running)" opacity={0.22} />
+    </g>
   )
 }
 
@@ -193,7 +229,7 @@ export function Ball() {
     >
       <svg className="ball" viewBox="0 0 56 56" aria-hidden="true">
         <RingSegments views={sessions} />
-        {/* 中层：球体（出错抖动 / 空闲呼吸；done 单次弹跳保留） */}
+        {/* 中层：球体——v0.4.0 纯黑正圆（x.ai 实测 #0a0a0c、无高光），出错抖动/空闲微呼吸保留 */}
         <circle
           cx={28}
           cy={28}
@@ -209,8 +245,6 @@ export function Ball() {
                   : ''
           }
         />
-        {/* 球面高光（低透明度椭圆，非渐变） */}
-        <ellipse cx={24.5} cy={21} rx={10.5} ry={6.5} fill="var(--orb-highlight)" opacity={0.35} />
         {/* 中心：精灵眼 */}
         <g className="eye-layer">
           <EyeSystem mode={display} />

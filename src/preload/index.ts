@@ -48,6 +48,8 @@ export interface PupilApi {
   quit(): void
   /** 订阅音效播放指令（主进程按通知策略驱动，携带最新音色包/音量） */
   onSoundPlay(cb: (payload: { type: string; pack?: string; volume?: number }) => void): () => void
+  /** 订阅全局光标注视方向（眼神跟随；gx/gy 为相对球心单位向量，死区内 0,0） */
+  onGaze(cb: (g: { gx: number; gy: number }) => void): () => void
 }
 
 const api: PupilApi = {
@@ -85,6 +87,11 @@ const api: PupilApi = {
       cb(payload)
     ipcRenderer.on(IPC.soundPlay, listener)
     return () => ipcRenderer.removeListener(IPC.soundPlay, listener)
+  },
+  onGaze: (cb) => {
+    const listener = (_e: IpcRendererEvent, g: { gx: number; gy: number }): void => cb(g)
+    ipcRenderer.on(IPC.gazeUpdate, listener)
+    return () => ipcRenderer.removeListener(IPC.gazeUpdate, listener)
   }
 }
 
