@@ -45,6 +45,8 @@ export class MonitoringCore {
   private notifyExecutor: NotifyExecutor | null = null
   private inferenceTimer: NodeJS.Timeout | null = null
   private dnd = false
+  /** v0.5.0：上一 tick 是否存在 done 保持态（用于检测窗口到期触发回落广播） */
+  private doneHoldActive = false
   private muted = false
   private started = false
   private adapterIds: string[] = []
@@ -125,7 +127,11 @@ export class MonitoringCore {
     // 推断 tick：每秒检查一次（仅比较时间戳，开销可忽略）
     this.inferenceTimer = setInterval(() => {
       const changed = this.inference.tick()
-      if (changed.length > 0) this.broadcast()
+      // v0.5.0 完成保持窗口到期：done → idle 的回落没有任何事件，靠此 tick 对比触发广播
+      const anyDone = this.registry.snapshot().some((v) => v.state === 'done')
+      const doneExpired = this.doneHoldActive && !anyDone
+      this.doneHoldActive = anyDone
+      if (changed.length > 0 || doneExpired) this.broadcast()
     }, 1000)
   }
 

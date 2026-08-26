@@ -6,6 +6,7 @@ import { ConfigStore } from './config'
 import { MonitoringCore } from './monitoring-core'
 import { WindowManager } from './window-manager'
 import { GazeTracker } from './gaze-tracker'
+import { BubbleTracker, eventToBubbleKind } from './bubble-tracker'
 import { TrayManager } from './tray'
 import { Notifier } from './notifier'
 import { AutoLaunch } from './auto-launch'
@@ -13,6 +14,7 @@ import { ensureCliShim, ensureCliOnPath } from './paths'
 import { FileHistoryStore } from './history-store'
 import { activateSessionWindow } from '../integrations/win32-window'
 import { IPC } from '../shared/ipc-channels'
+import { sessionKey } from '../shared/events'
 
 // 轻量常驻工具：关闭硬件加速（软件渲染足够，避免 VM/沙箱/RDP 下 GPU 进程崩溃）
 app.disableHardwareAcceleration()
@@ -36,8 +38,30 @@ function bootstrap(): void {
   const autoLaunch = new AutoLaunch(config)
   // 眼神跟随：全局光标方向 → 球窗（GrokBot 式「它活着」）
   const gaze = new GazeTracker(() => windows.ballWindow)
+  // v0.5.0 状态播报去重器
+  const bubbles = new BubbleTracker()
+  // 快照广播：订阅者（球窗/面板窗）
+  core.subscribe((views) => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) {
+        win.webContents.send(IPC.sessionsSnapshot, views)
+      }
+    }
+  })
 
-  core.setNotifyExecutor(notifier.execute)
+  // v0.5.0 状态播报：挂在通知执行器上——
+  // 事件语义即边沿（turn_completed/waiting_input/error 天生一次性），零复读；
+  // 勿扰/静音时 MonitoringCore.onEvent 直接跳过执行器，气泡天然静默。
+  core.setNotifyExecutor((strategy, event, view) => {
+    notifier.execute(strategy, event, view)
+    const kind = eventToBubbleKind(event.eventType)
+    if (!kind || !view) return
+    const text = bubbles.update(kind, sessionKey(view.agentType, view.sessionId), Date.now())
+    if (text) {
+      const ball = windows.ballWindow
+      if (ball && !ball.isDestroyed()) ball.webContents.send(IPC.speechBubble, text)
+    }
+  })
 
   // P2-8 事件历史持久化：启动恢复 + 60s 节流落盘（有新事件才写）
   core.registry.setHistoryStore(new FileHistoryStore())
@@ -51,15 +75,6 @@ function bootstrap(): void {
   if (config.get('autoLaunch') && app.isPackaged) {
     autoLaunch.set(true)
   }
-
-  // 快照广播：订阅者（球窗/面板窗）
-  core.subscribe((views) => {
-    for (const win of BrowserWindow.getAllWindows()) {
-      if (!win.isDestroyed()) {
-        win.webContents.send(IPC.sessionsSnapshot, views)
-      }
-    }
-  })
 
   // ---- IPC handlers ----
   ipcMain.handle(IPC.sessionsGet, () => core.snapshot())

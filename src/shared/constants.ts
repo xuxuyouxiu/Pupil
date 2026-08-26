@@ -14,9 +14,17 @@ export const EVENT_RATE_LIMIT_PER_SEC = 100
 export const TIMEOUT_THRESHOLD_MS_DEFAULT = 10 * 60 * 1000 // 10 分钟
 export const DISCONNECT_HEARTBEAT_MS_DEFAULT = 30 * 1000 // 30 秒无心跳判定断连
 
+/** v0.5.0 完成保持窗口：turn_completed 后视图保持 done 态的时长（星星眼/弹跳可见期） */
+export const DONE_HOLD_MS_DEFAULT = 4000
+
 /** 悬浮球窗口尺寸 */
 export const BALL_SIZE = 56
 export const BALL_HOVER_SCALE = 1.1
+
+/** v0.5.0 状态播报气泡带：球窗向上扩出的高度（球体 SVG 定位在该带之下） */
+export const BUBBLE_BAND = 20
+/** v0.5.0 球体左右留白（窗口宽 = BALL_SIZE + 2×此值；拖动命中区随之加宽 4px） */
+export const BALL_WINDOW_INSET_X = 4
 
 /** 面板窗口尺寸 */
 export const PANEL_WIDTH = 360

@@ -39,6 +39,9 @@ export const IPC = {
   /** 主进程 -> renderer：请求播放音效（type: done/waiting/error/timeout/offline） */
   soundPlay: 'pupil:sound:play',
 
+  /** 主进程 -> 球窗：状态播报气泡文案（边沿触发，主进程已做去重与勿扰过滤） */
+  speechBubble: 'pupil:speech:bubble',
+
   /** 主进程 -> 球窗：全局光标相对球心的单位方向 {gx,gy}（眼神跟随，死区内为 0,0） */
   gazeUpdate: 'pupil:gaze:update',
 

@@ -15,7 +15,7 @@ import {
   SessionView,
   sessionKey
 } from '../shared/events'
-import { EVENT_RING_BUFFER_SIZE } from '../shared/constants'
+import { EVENT_RING_BUFFER_SIZE, DONE_HOLD_MS_DEFAULT } from '../shared/constants'
 
 /** 历史持久化钩子（P2-8）：由上层注入实现，core 保持零 IO */
 export interface HistoryStore {
@@ -38,6 +38,12 @@ interface SessionRecord {
   pid?: number
   /** 保留"上一非错误态"，error 恢复显示用（暂存，MVP 不深用） */
   prevState: SessionState
+  /**
+   * v0.5.0 完成保持：turn_completed 的时刻。
+   * 视图投影时若 now - doneAt < DONE_HOLD_MS 则 state 显示为 'done'
+   * （状态机仍落 idle，推断引擎不受影响）——修复 done 展示态自 v0.4.2 起不可达的问题。
+   */
+  doneAt?: number
   /** 事件环形缓冲（每会话最近 N 条，MVP 存内存不落盘） */
   events: AgentEvent[]
 
@@ -164,6 +170,8 @@ export class SessionRegistry {
       case 'session_ended':
         rec.currentTool = undefined
         rec.turnStartedAt = undefined
+        // v0.5.0 完成保持：只有 turn_completed 触发 done 展示窗口（session_ended 是收工，不庆祝）
+        if (event.eventType === 'turn_completed') rec.doneAt = event.timestamp
         break
       case 'waiting_input':
       case 'thinking':
@@ -222,7 +230,7 @@ export class SessionRegistry {
     const views = [...this.sessions.values()]
       .filter((r) => !r.restoredOnly)
       .map((r) => this.toView(r))
-    const prio = { error: 0, waiting_input: 1, tool_calling: 2, thinking: 3, idle: 4 } as const
+    const prio = { error: 0, waiting_input: 1, tool_calling: 2, thinking: 3, done: 4, idle: 5 } as const
     views.sort((a, b) => {
       const pa = prio[a.state] ?? 5
       const pb = prio[b.state] ?? 5
@@ -265,9 +273,9 @@ export class SessionRegistry {
     return this.sessions.size
   }
 
-  /** 内部记录 → 渲染视图（不暴露事件缓冲） */
-  private toView(rec: SessionRecord): SessionView {
-    return {
+  /** 内部记录 → 渲染视图（不暴露事件缓冲）。now 注入可测 */
+  private toView(rec: SessionRecord, now: number = Date.now()): SessionView {
+    const view: SessionView = {
       key: rec.key,
       agentType: rec.agentType,
       sessionId: rec.sessionId,
@@ -280,5 +288,11 @@ export class SessionRegistry {
       title: rec.title,
       pid: rec.pid
     }
+    // v0.5.0 完成保持投影：turn_completed 后 DONE_HOLD_MS 内（墙钟）视图显示 done。
+    // 状态机仍落 idle；timeout/disconnected 标记优先级更高（toDisplayState 先看 flags）。
+    if (rec.state === 'idle' && rec.doneAt !== undefined && now < rec.doneAt + DONE_HOLD_MS_DEFAULT) {
+      view.state = 'done'
+    }
+    return view
   }
 }

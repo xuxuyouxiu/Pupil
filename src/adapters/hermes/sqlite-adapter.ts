@@ -42,8 +42,14 @@ interface MessageRow {
   role: string
   content?: string | null
   tool_name?: string | null
+  tool_calls?: string | null
   finish_reason?: string | null
   timestamp?: number
+}
+
+/** 判定一条 assistant 消息是否携带工具调用（turn 中间消息） */
+function hasToolCalls(m: { tool_calls?: string | null }): boolean {
+  return !!(m.tool_calls && m.tool_calls !== '')
 }
 
 /**
@@ -65,6 +71,42 @@ function summarizeError(content: string | null | undefined): string {
   if (!content) return '模型连接错误'
   const m = content.match(/Error code: \d{3}[\s\S]{0,180}/)?.[0]
   return (m ?? content).slice(0, 200)
+}
+
+/**
+ * 消息 → 归一化事件（纯函数，可单测；返回 null = 不产生事件）。
+ *
+ * v0.5.1 修正「完成判定」：此前用 finish_reason === 'stop' 判定回合结束，
+ * 但 Hermes 实际写库的形态是——带工具调用的 assistant 消息 finish_reason='tool_calls'，
+ * 正常最终回复 'stop'，被截断/中断回合的最终回复 finish_reason=NULL（如迭代上限）。
+ * 权威判据是 tool_calls 字段：assistant 消息不带工具调用 = 回合最终回复（无论 stop/None）；
+ * 带工具调用 = turn 中间消息（忽略，球保持 running）。
+ */
+export function mapHermesMessage(
+  m: Pick<MessageRow, 'role' | 'tool_name' | 'tool_calls' | 'finish_reason' | 'content'>,
+  base: Omit<AgentEvent, 'eventType' | 'payload'>
+): AgentEvent | null {
+  if (!m.role || m.role === 'session_meta') return null
+  if (m.role === 'user') {
+    return { ...base, eventType: 'turn_started', payload: { raw: m } }
+  }
+  if (m.role === 'tool' && m.tool_name) {
+    return { ...base, eventType: 'tool_call_started', payload: { toolName: m.tool_name, raw: m } }
+  }
+  if (m.role === 'assistant') {
+    if (hasToolCalls(m)) return null // turn 中间（工具调用消息），不产生事件
+    // 模型方连接错误形态：assistant + finish_reason=NULL + 错误文本（v0.4.1）
+    if (m.finish_reason == null && isErrorTurn(m.content)) {
+      return {
+        ...base,
+        eventType: 'error',
+        payload: { errorMessage: summarizeError(m.content), raw: m }
+      }
+    }
+    // 无工具调用的 assistant 消息 = 回合最终回复（stop 或 NULL 皆可）→ 完成
+    return { ...base, eventType: 'turn_completed', payload: { raw: m } }
+  }
+  return null
 }
 
 export class HermesSqliteAdapter implements AgentAdapter {
@@ -132,12 +174,17 @@ export class HermesSqliteAdapter implements AgentAdapter {
   /** 启动时恢复单个会话的当前状态（仅 running 类事件，不触发通知） */
   private recoverState(db: SqliteDb, s: SessionRow, _lastAct: number): void {
     const rows = db.query(
-      `SELECT role, tool_name, finish_reason FROM messages
+      `SELECT role, tool_name, tool_calls, finish_reason, content FROM messages
        WHERE session_id='${s.id}' AND active=1 ORDER BY id DESC LIMIT 1`
     ) as unknown as MessageRow[]
     const last = rows[0]
     if (!last) return
-    if (last.role === 'user' || (last.role === 'assistant' && last.finish_reason !== 'stop')) {
+    // v0.5.1：回合是否仍在进行 = 最后消息是 user，或 assistant 且携带工具调用（中间消息）。
+    // 此前按 finish_reason !== 'stop' 判定——被截断回合（finish_reason=NULL 的最终回复）
+    // 会被误判为仍在思考，重启后球卡 running。
+    const running =
+      last.role === 'user' || (last.role === 'assistant' && hasToolCalls(last))
+    if (running) {
       this.emit?.({ source: ID, agentType: 'hermes', sessionId: s.id, cwd: s.cwd, eventType: 'turn_started', timestamp: Date.now(), payload: { title: s.title } })
       if (last.tool_name) {
         this.emit?.({ source: ID, agentType: 'hermes', sessionId: s.id, cwd: s.cwd, eventType: 'tool_call_started', timestamp: Date.now(), payload: { toolName: last.tool_name, title: s.title } })
@@ -152,7 +199,7 @@ export class HermesSqliteAdapter implements AgentAdapter {
     try {
       // 1. 新消息差分
       const msgs = db.query(
-        `SELECT id, session_id, role, content, tool_name, finish_reason, timestamp FROM messages
+        `SELECT id, session_id, role, content, tool_name, tool_calls, finish_reason, timestamp FROM messages
          WHERE id > ${this.lastMessageId} ORDER BY id ASC LIMIT 200`
       ) as unknown as MessageRow[]
       for (const m of msgs) {
@@ -197,30 +244,17 @@ export class HermesSqliteAdapter implements AgentAdapter {
   private mapMessage(m: MessageRow): void {
     if (!m.session_id) return
     const ts = Number(m.timestamp ?? 0) * 1000
+    const title = this.titles.get(m.session_id)
     const base = {
       source: ID,
       agentType: 'hermes' as AgentType,
       sessionId: m.session_id,
       timestamp: ts || Date.now()
     }
-    const title = this.titles.get(m.session_id)
-    if (m.role === 'user') {
-      this.emit?.({ ...base, eventType: 'turn_started', payload: { title, raw: m } })
-    } else if (m.role === 'tool' && m.tool_name) {
-      this.emit?.({ ...base, eventType: 'tool_call_started', payload: { toolName: m.tool_name, title, raw: m } })
-    } else if (m.role === 'assistant' && m.finish_reason === 'stop') {
-      this.emit?.({ ...base, eventType: 'turn_completed', payload: { title, raw: m } })
-    } else if (m.role === 'assistant' && m.finish_reason == null && isErrorTurn(m.content)) {
-      // v0.4.1 根因修复：模型方连接错误（400/429/5xx/断连）在 state.db 里的形态是
-      // assistant 消息 + finish_reason=NULL + 错误文本（本机实测样本：
-      // "Error: Error code: 400 - {'error': {'message': 'reasoning.effort: Invalid option...'}}"）。
-      // 此前这类轮次被静默忽略——error 事件从不产生，错误提示音从未响过。
-      this.emit?.({
-        ...base,
-        eventType: 'error',
-        payload: { errorMessage: summarizeError(m.content), title, raw: m }
-      })
-    }
+    const event = mapHermesMessage(m, base)
+    if (!event) return
+    const out = event.payload ? { ...event, payload: { ...event.payload, title } } : event
+    this.emit?.(out)
   }
 
   private emitSession(s: SessionRow, eventType: 'session_started' | 'session_ended', ts: number): void {

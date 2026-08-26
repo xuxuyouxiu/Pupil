@@ -41,7 +41,7 @@ export interface AgentEvent {
 }
 
 /** 会话基础状态（事件驱动，来自状态机） */
-export type SessionState = 'idle' | 'thinking' | 'tool_calling' | 'waiting_input' | 'error'
+export type SessionState = 'idle' | 'thinking' | 'tool_calling' | 'waiting_input' | 'error' | 'done'
 
 /** 推断叠加标记（非基础状态） */
 export interface SessionFlags {
@@ -114,6 +114,9 @@ export function toDisplayState(view: Pick<SessionView, 'state' | 'flags'>): Disp
       return 'error'
     case 'waiting_input':
       return 'waiting'
+    case 'done':
+      // v0.5.0：turn_completed 后的完成保持窗口（registry 投影），星星眼/弹跳由此驱动
+      return 'done'
     case 'thinking':
     case 'tool_calling':
       return 'running'

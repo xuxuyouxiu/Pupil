@@ -8,6 +8,7 @@
  */
 import { BrowserWindow, screen } from 'electron'
 import { IPC } from '../shared/ipc-channels'
+import { BUBBLE_BAND } from '../shared/constants'
 
 /** 光标距球心小于该距离时视为「贴着球」，眼神回中 */
 const DEAD_ZONE_PX = 70
@@ -58,8 +59,11 @@ export class GazeTracker {
     // 光标静止超阈值 → 视为「没在动」：发 0,0（renderer 自动切到自主张望）
     if (now - this.lastMoveAt < POINTER_IDLE_MS) {
       const b = win.getBounds()
-      const dx = p.x - (b.x + b.width / 2)
-      const dy = p.y - (b.y + b.height / 2)
+      // v0.5.0 窗口含上气泡带(20)+左右留白(4)：球心在窗口中心下方 10px 处
+      const cxp = b.x + b.width / 2
+      const cyp = b.y + b.height / 2 + BUBBLE_BAND / 2
+      const dx = p.x - cxp
+      const dy = p.y - cyp
       const dist = Math.hypot(dx, dy)
       if (dist > DEAD_ZONE_PX) {
         gx = dx / dist

@@ -208,3 +208,84 @@ export function playSound(type: SoundType): void {
   const pack = PACKS[currentPack] ?? PACKS.chime
   for (const spec of pack.sounds[type] ?? []) tone(ac, spec)
 }
+
+/* ---- v0.5.0 宠物互动音效（不走通知策略，球窗本地直触） ---- */
+
+/**
+ * 戳一下「啵」：880→1200Hz 快速上滑正弦，60ms（指数滑音听感 Q 弹）。
+ */
+export function playPoke(): void {
+  const ac = getCtx()
+  if (!ac || currentVolume <= 0) return
+  const osc = ac.createOscillator()
+  const g = ac.createGain()
+  const t0 = ac.currentTime
+  osc.type = 'sine'
+  try {
+    osc.frequency.setValueAtTime(880, t0)
+    osc.frequency.exponentialRampToValueAtTime(1200, t0 + 0.06)
+  } catch {
+    osc.frequency.value = 1000 // 极端参数下兜底为定频
+  }
+  const peak = PEAK * currentVolume * 0.7
+  g.gain.setValueAtTime(peak, t0)
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.06)
+  osc.connect(g)
+  g.connect(ac.destination)
+  osc.start(t0)
+  osc.stop(t0 + 0.09)
+}
+
+/**
+ * 呼噜循环：55Hz 正弦 × 22Hz 幅度颤音，持续到 stopPurr()。
+ * 结构：osc(55Hz) → tremGain(LFO 调制增益) → master → destination。
+ * 返回停止句柄；重复调用先停旧的（摸头重入安全）。
+ */
+let purrNodes: { osc: OscillatorNode; lfo: OscillatorNode; master: GainNode } | null = null
+
+export function startPurr(): void {
+  const ac = getCtx()
+  if (!ac || currentVolume <= 0) return
+  stopPurr()
+
+  const osc = ac.createOscillator()
+  const lfo = ac.createOscillator()
+  const trem = ac.createGain()
+  const master = ac.createGain()
+  const t0 = ac.currentTime
+
+  osc.type = 'sine'
+  osc.frequency.value = 55
+  // 颤音：22Hz LFO 控制增益在 0.25~1 间摆动（呼噜的滚动质感）
+  lfo.type = 'sine'
+  lfo.frequency.value = 22
+  const base = PEAK * currentVolume * 0.5
+  trem.gain.value = base * 0.375 // 摆幅 ±37.5%（LFO 输出 ±1 × 此值）
+  lfo.connect(trem.gain)
+
+  master.gain.setValueAtTime(0, t0)
+  master.gain.linearRampToValueAtTime(base, t0 + 0.18) // 180ms 淡入不突兀
+
+  osc.connect(trem)
+  trem.connect(master)
+  master.connect(ac.destination)
+  osc.start(t0)
+  lfo.start(t0)
+  purrNodes = { osc, lfo, master }
+}
+
+export function stopPurr(): void {
+  if (!purrNodes) return
+  const { osc, lfo, master } = purrNodes
+  purrNodes = null
+  try {
+    const t0 = osc.context.currentTime
+    master.gain.cancelScheduledValues(t0)
+    master.gain.setValueAtTime(master.gain.value, t0)
+    master.gain.linearRampToValueAtTime(0, t0 + 0.15) // 150ms 淡出
+    osc.stop(t0 + 0.2)
+    lfo.stop(t0 + 0.2)
+  } catch {
+    /* 已停止的节点：忽略 */
+  }
+}

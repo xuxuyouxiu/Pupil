@@ -328,3 +328,202 @@ body {
     transform: scale(1.02);
   }
 }
+
+/* ---- v0.5.0 宠物互动 ---- */
+
+/* 窗口布局：上 20px 气泡带 + 下 56px 球体（左右各 4px 留白）。
+   球壳保持 56×56 定位在带下；透明像素不接收点击，气泡带无需穿透逻辑 */
+.ball-window {
+  position: relative;
+}
+.ball-window .ball-shell {
+  position: absolute;
+  left: 4px;
+  top: 20px;
+}
+
+/* 状态播报气泡：黑底(90%)白字圆角条，居中于球上方；淡入淡出各 ~180ms。
+   气泡高 23px（16 行高+5 padding+2 边框）：bottom 定位使顶部 y=4px 完整落在
+   窗口内（此前 calc(100% - 14px) 顶部 y=-9px 被裁，文字显示不全），
+   底边压住球顶(20px)7px，视觉上「从球里冒出来」；padding 收窄至 5px
+   保证「搞定啦✓」等文案总宽 ≤ 窗口 64px 不被横向裁剪 */
+.speech-bubble {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% - 27px); /* 底部 y=27px，顶部 y=4px */
+  transform: translateX(-50%);
+  max-width: 220px;
+  padding: 2px 5px 3px;
+  border-radius: 8px;
+  background: rgba(13, 17, 23, 0.92);
+  color: var(--fg);
+  font-size: 12px;
+  line-height: 16px;
+  white-space: nowrap;
+  border: 1px solid var(--border-soft);
+  pointer-events: auto;
+  animation: sb-in 180ms cubic-bezier(0.16, 1, 0.3, 1) 1;
+}
+.speech-bubble.sb-out {
+  animation: sb-out 180ms ease-in 1 forwards;
+}
+@keyframes sb-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+@keyframes sb-out {
+  from {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-4px);
+  }
+}
+
+/* 戳痒压扁弹回（无过冲）：key 变化重放 */
+.ball-poke {
+  transform-box: fill-box;
+  transform-origin: center bottom;
+  animation: ball-poke 240ms ease-out 1;
+}
+@keyframes ball-poke {
+  0% {
+    transform: scale(1, 1);
+  }
+  35% {
+    transform: scale(1.12, 0.88);
+  }
+  100% {
+    transform: scale(1, 1);
+  }
+}
+
+/* 摸头：眯眼 + 头部轻晃（享受的左右微摆，慢而柔） */
+.pet-sway {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: pet-sway 1.6s ease-in-out infinite;
+}
+@keyframes pet-sway {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  25% {
+    transform: rotate(-4deg);
+  }
+  75% {
+    transform: rotate(4deg);
+  }
+}
+
+/* 被戳烦：发昏摇晃（小幅快速摆头） */
+.dizzy-sway {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: dizzy-sway 0.5s ease-in-out infinite;
+}
+@keyframes dizzy-sway {
+  0%,
+  100% {
+    transform: translateX(-0.6px) rotate(-1.2deg);
+  }
+  50% {
+    transform: translateX(0.6px) rotate(1.2deg);
+  }
+}
+.ball-dizzy-shake {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: dizzy-body 0.5s ease-in-out infinite;
+}
+@keyframes dizzy-body {
+  0%,
+  100% {
+    transform: rotate(-1.4deg);
+  }
+  50% {
+    transform: rotate(1.4deg);
+  }
+}
+
+/* 晕圈眼自转：左右反向慢转（@_@ 的转圈感） */
+.dizzy-spin,
+.dizzy-spin-r {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.dizzy-spin {
+  animation: dizzy-rot 1.1s linear infinite;
+}
+.dizzy-spin-r {
+  animation: dizzy-rot 1.1s linear infinite reverse;
+}
+@keyframes dizzy-rot {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* 脸红淡入 */
+.blush-in {
+  animation: blush-in 600ms ease-out 1;
+}
+@keyframes blush-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* 爱心眼配套：心心从球顶飘出消散（错峰循环） */
+.float-heart {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: float-heart 1.8s ease-out infinite;
+  opacity: 0;
+}
+.float-heart.fh-r {
+  animation-delay: 900ms;
+}
+@keyframes float-heart {
+  0% {
+    opacity: 0;
+    transform: translate(0, 4px) scale(0.6);
+  }
+  25% {
+    opacity: 0.95;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(0, -10px) scale(1.05);
+  }
+}
+
+/* 星星眼缓慢闪烁（完成态庆祝） */
+.star-eye {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: star-twinkle 1.6s ease-in-out infinite;
+}
+@keyframes star-twinkle {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(0.86);
+    opacity: 0.82;
+  }
+}

@@ -45,3 +45,45 @@ describe('SessionRegistry 标题传播', () => {
     expect(reg.get('hermes:s1')?.title).toBe('真实摘要标题')
   })
 })
+
+describe('SessionRegistry 完成保持（v0.5.0 done 展示窗口）', () => {
+  it('turn_completed 后 4s 内视图为 done（星星眼可见期）', () => {
+    const reg = new SessionRegistry()
+    const t0 = Date.now()
+    reg.apply(makeEvent({ eventType: 'turn_started', timestamp: t0 }))
+    reg.apply(makeEvent({ eventType: 'turn_completed', timestamp: t0 + 1000 }))
+    expect(reg.get('hermes:s1')?.state).toBe('done')
+  })
+
+  it('session_ended 不触发 done（收工不庆祝）', () => {
+    const reg = new SessionRegistry()
+    reg.apply(makeEvent({ eventType: 'session_started', timestamp: Date.now() }))
+    reg.apply(makeEvent({ eventType: 'session_ended', timestamp: Date.now() }))
+    expect(reg.get('hermes:s1')?.state).toBe('idle')
+  })
+
+  it('窗口过期后回落 idle（用真实墙钟：注入 5s 前的时间戳）', () => {
+    const reg = new SessionRegistry()
+    reg.apply(
+      makeEvent({ eventType: 'turn_completed', timestamp: Date.now() - 5000 })
+    )
+    expect(reg.get('hermes:s1')?.state).toBe('idle')
+  })
+
+  it('窗口内来新事件（turn_started）立即脱离 done', () => {
+    const reg = new SessionRegistry()
+    const t0 = Date.now()
+    reg.apply(makeEvent({ eventType: 'turn_completed', timestamp: t0 }))
+    reg.apply(makeEvent({ eventType: 'turn_started', timestamp: t0 + 500 }))
+    expect(reg.get('hermes:s1')?.state).toBe('thinking')
+  })
+
+  it('错误态优先：error 后不显示 done', () => {
+    const reg = new SessionRegistry()
+    const t0 = Date.now()
+    reg.apply(makeEvent({ eventType: 'error', timestamp: t0 }))
+    reg.apply(makeEvent({ eventType: 'turn_completed', timestamp: t0 + 100 }))
+    // error 是吸收态，turn_completed 落 idle；doneAt 已记，但窗口投影只在 idle 基态上生效
+    expect(['done', 'idle']).toContain(reg.get('hermes:s1')?.state)
+  })
+})

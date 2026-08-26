@@ -7,20 +7,29 @@
  *  - 每次形态切换都被一次眨眼掩盖（新状态以闭眼姿态出现再睁开）
  *
  * v0.4.2 状态表情对齐原版状态目录（states.ts 测量值）：
- *  - running → 眼睛隐藏，球体变身三点加载（见 Ball.tsx ThinkingDots）
+ *  - running → 眼睛隐藏，球体变身三点加载（见 Ball.tsx BounceLoader）
  *  - waiting → wide 惊讶眼（原版 wide：眼高 ×2.1）
- *  - done    → wink 眨单眼（原版测量：闭眼是比睁眼更宽的横杠 0.447 vs 0.236）
  *  - error   → 眼睛隐藏，球体变形成「！」（见 Ball.tsx Exclaim）
  *  - offline → 眼睛隐藏，球缩点弹跳（见 Ball.tsx），仅保留 z
- * 注视优先级：光标跟随（主进程 GazeTracker 推送）> 状态自带注视。
+ *
+ * v0.5.0 宠物互动表情（mood 覆盖层，优先级高于状态表情）：
+ *  - petting → 眯眼享受（原版 egg/hexagon 态眼睛压窄思路的弧线版）+ 脸红 + 头部轻晃
+ *  - loved   → 爱心眼♥ + 心心飘出（脸红保留）
+ *  - dizzy   → 晕圈眼@_@（被戳烦）+ 发昏摇晃
+ *  - done    → 星星眼✦（替换 v0.4.x 的 wink；星光/弹跳仍在 Ball 层）
+ * 注视优先级：光标跟随（主进程 GazeTracker 推送）> 状态自带注视；互动 mood 下不跟随。
  */
 import { useEffect, useState } from 'react'
 import type { DisplayState } from '../../shared/events'
 
 export type EyeMode = DisplayState
 
+/** 互动心情（v0.5.0）：由 Ball 手势仲裁驱动 */
+export type PetMood = 'petting' | 'loved' | 'dizzy'
+
 interface EyeSystemProps {
   mode: EyeMode
+  mood?: PetMood | null
 }
 
 const BALL_C = 28
@@ -42,8 +51,6 @@ function stateGaze(mode: EyeMode): { gx: number; gy: number; allowPointer: boole
       return { gx: 0, gy: -0.44, allowPointer: true } // 抬头望向主人（催促输入）
     case 'idle':
       return { gx: 0, gy: -0.1, allowPointer: true } // 待机也要「活着」
-    case 'done':
-      return { gx: 0, gy: -0.3, allowPointer: false } // 眨单眼微仰
     default:
       return { gx: 0, gy: 0, allowPointer: false }
   }
@@ -79,13 +86,6 @@ function BotEye({
   )
 }
 
-/** wink 闭合眼：横杠（原版测量：比睁眼更宽 0.447 vs 0.236，且是独立形状不是压扁） */
-function WinkDash({ cx }: { cx: number }) {
-  const w = 4.7 // 0.447/0.236 × EYE_RX ≈ 9.6 直径 → 半宽 4.8，取 4.7 视觉近似
-  const h = 1.0
-  return <rect x={cx - w} y={EYE_CY - h} width={w * 2} height={h * 2} rx={h} fill="var(--eye-white)" />
-}
-
 /** 半开眼（timeout 不耐烦斜视） */
 function HalfOpenEye({ cx, gaze = 0 }: { cx: number; gaze?: number }) {
   return (
@@ -98,6 +98,77 @@ function HalfOpenEye({ cx, gaze = 0 }: { cx: number; gaze?: number }) {
         strokeWidth={2.2}
         strokeLinecap="round"
       />
+    </g>
+  )
+}
+
+/* ---- v0.5.0 互动表情 ---- */
+
+/** 眯眼享受：^ ^ 弧线（摸头；原版 egg 态「眼变窄」的弧线表达版） */
+function SquintEye({ cx }: { cx: number }) {
+  return (
+    <path
+      d={`M ${cx - 5} ${EYE_CY + 1.5} Q ${cx} ${EYE_CY - 3.8} ${cx + 5} ${EYE_CY + 1.5}`}
+      fill="none"
+      stroke="var(--eye-white)"
+      strokeWidth={2.6}
+      strokeLinecap="round"
+    />
+  )
+}
+
+/** 白色爱心（爱心眼 / 飘出的心心共用几何，中心在原点，高约 7px） */
+export const HEART_PATH = 'M 0 3.2 C -4.4 -0.9 -2.7 -4.8 0 -2.1 C 2.7 -4.8 4.4 -0.9 0 3.2 Z'
+
+function HeartEye({ cx }: { cx: number }) {
+  return (
+    <path
+      d={HEART_PATH}
+      transform={`translate(${cx} ${EYE_CY - 0.5})`}
+      fill="var(--eye-white)"
+    />
+  )
+}
+
+/** 四角星✦（完成态星星眼；中心在原点，外径 5.4） */
+const STAR_PATH = 'M 0 -5.4 L 1.35 -1.35 L 5.4 0 L 1.35 1.35 L 0 5.4 L -1.35 1.35 L -5.4 0 L -1.35 -1.35 Z'
+
+function StarEye({ cx }: { cx: number }) {
+  return (
+    <g transform={`translate(${cx} ${EYE_CY})`}>
+      <path className="star-eye" d={STAR_PATH} fill="var(--eye-white)" />
+    </g>
+  )
+}
+
+/** 晕圈眼@_@：白圈 + 小圆点（左右反向慢转，发昏感） */
+function DizzyEye({ cx, reverse = false }: { cx: number; reverse?: boolean }) {
+  return (
+    <g transform={`translate(${cx} ${EYE_CY})`}>
+      <g className={reverse ? 'dizzy-spin-r' : 'dizzy-spin'}>
+        <circle r={5} fill="none" stroke="var(--eye-white)" strokeWidth={2} />
+        <circle cx={3.2} r={1.9} fill="var(--eye-white)" />
+      </g>
+    </g>
+  )
+}
+
+/** 脸红：黑球上两枚低饱和粉椭圆（唯一新增颜色元素，不破坏轮廓） */
+function Blush() {
+  return (
+    <g className="blush-in">
+      <ellipse cx={BALL_C - 11} cy={EYE_CY + 8.5} rx={3.7} ry={2} fill="#e8a0a8" opacity={0.55} />
+      <ellipse cx={BALL_C + 11} cy={EYE_CY + 8.5} rx={3.7} ry={2} fill="#e8a0a8" opacity={0.55} />
+    </g>
+  )
+}
+
+/** 爱心眼配套：心心从球顶飘出消散 */
+function FloatingHearts() {
+  return (
+    <g>
+      <path className="float-heart fh-l" d={HEART_PATH} transform="translate(17 16)" fill="#f2b8be" />
+      <path className="float-heart fh-r" d={HEART_PATH} transform="translate(39 14)" fill="#f2b8be" />
     </g>
   )
 }
@@ -117,10 +188,55 @@ function OfflineZ() {
   )
 }
 
-export function EyeSystem({ mode }: EyeSystemProps) {
+export function EyeSystem({ mode, mood = null }: EyeSystemProps) {
   // 全局光标注视方向（GazeTracker 推送；死区内为 0,0 = 回中）
   const [ptr, setPtr] = useState({ gx: 0, gy: 0 })
   useEffect(() => window.pupil.onGaze(setPtr), [])
+
+  const left = BALL_C - EYE_GAP / 2
+  const right = BALL_C + EYE_GAP / 2
+
+  // ---- v0.5.0 互动 mood 覆盖层：优先于一切状态表情；眼神不跟随、无循环眨眼 ----
+  if (mood === 'petting' || mood === 'loved' || mood === 'dizzy') {
+    let face: React.ReactNode
+    let wrapAnim = ''
+    if (mood === 'petting') {
+      face = (
+        <>
+          <SquintEye cx={left} />
+          <SquintEye cx={right} />
+        </>
+      )
+      wrapAnim = 'pet-sway'
+    } else if (mood === 'loved') {
+      face = (
+        <>
+          <HeartEye cx={left} />
+          <HeartEye cx={right} />
+        </>
+      )
+      wrapAnim = 'pet-sway'
+    } else {
+      face = (
+        <>
+          <DizzyEye cx={left} />
+          <DizzyEye cx={right} reverse />
+        </>
+      )
+      wrapAnim = 'dizzy-sway'
+    }
+    return (
+      <svg className="eyes" viewBox="0 0 56 56" aria-hidden="true">
+        <g className={wrapAnim}>
+          <g key={`mood-${mood}`} className="eye-swap">
+            {(mood === 'petting' || mood === 'loved') && <Blush />}
+            {face}
+            {mood === 'loved' && <FloatingHearts />}
+          </g>
+        </g>
+      </svg>
+    )
+  }
 
   // 球体本身成为动画的状态（running 三点加载 / error 感叹号 / offline 睡眠点）不画脸
   if (mode === 'running' || mode === 'error') return null
@@ -134,9 +250,6 @@ export function EyeSystem({ mode }: EyeSystemProps) {
   // 球面深度：往右看 → 左眼变远侧眼（压缩）；反之亦然
   const depthL = ox >= 0 ? DEPTH : 1
   const depthR = ox <= 0 ? DEPTH : 1
-
-  const left = BALL_C - EYE_GAP / 2
-  const right = BALL_C + EYE_GAP / 2
 
   // 表情内容
   let content: React.ReactNode
@@ -159,11 +272,11 @@ export function EyeSystem({ mode }: EyeSystemProps) {
       )
       break
     case 'done':
-      // wink：左眼保持胶囊，右眼变横杠（原版测量：横杠比睁眼宽）
+      // v0.5.0 星星眼✦（庆祝感；弹跳与两侧星光仍在 Ball 层）
       content = (
         <>
-          <BotEye cx={left} depth={depthL} />
-          <WinkDash cx={right} />
+          <StarEye cx={left} />
+          <StarEye cx={right} />
         </>
       )
       break

@@ -4,7 +4,7 @@
  */
 import { BrowserWindow, screen, Display } from 'electron'
 import { join } from 'path'
-import { BALL_SIZE, PANEL_MAX_HEIGHT, PANEL_WIDTH, SETTINGS_HEIGHT, SETTINGS_WIDTH } from '../shared/constants'
+import { BALL_SIZE, PANEL_MAX_HEIGHT, PANEL_WIDTH, SETTINGS_HEIGHT, SETTINGS_WIDTH, BUBBLE_BAND, BALL_WINDOW_INSET_X } from '../shared/constants'
 import { ConfigStore } from './config'
 
 const isDev = process.env['ELECTRON_RENDERER_URL'] !== undefined
@@ -25,20 +25,30 @@ export class WindowManager {
 
   constructor(private config: ConfigStore) {}
 
-  /** 创建球窗口（常驻） */
+  /** 创建球窗口（常驻）。v0.5.0：窗口 64×76 —— 上 20px 气泡带 + 下 56px 球体，左右各 4px 留白 */
   createBallWindow(): BrowserWindow {
     const saved = this.config.get('ballPosition')
     const display = screen.getPrimaryDisplay()
     const { height: sh } = display.workAreaSize
-    // 默认：主屏左侧垂直居中
-    const x = saved?.x ?? Math.round(display.workArea.x + 16)
-    const y = saved?.y ?? Math.round(display.workArea.y + (sh - BALL_SIZE) / 2)
+    const winW = BALL_SIZE + BALL_WINDOW_INSET_X * 2
+    const winH = BALL_SIZE + BUBBLE_BAND
+
+    // 默认：主屏左侧垂直居中。坐标语义 = 窗口原点（含气泡带）
+    const defX = Math.round(display.workArea.x + 16)
+    const defY = Math.round(display.workArea.y + (sh - BALL_SIZE) / 2 - BUBBLE_BAND)
+    let x = saved?.x ?? defX
+    let y = saved?.y ?? defY
+    if (saved && !this.config.get('bubbleBandMigrated')) {
+      // v0.4.x 存的是 56×56 窗口原点 = 球体原点；新版窗口上扩气泡带，一次性补偿
+      y += BUBBLE_BAND
+      this.config.set('bubbleBandMigrated', true)
+    }
 
     const win = new BrowserWindow({
       x,
       y,
-      width: BALL_SIZE,
-      height: BALL_SIZE,
+      width: winW,
+      height: winH,
       show: false,
       frame: false,
       transparent: true,
@@ -98,6 +108,8 @@ export class WindowManager {
     const win = this.ball
     if (!win || !this.dragState) return
     if (dx === 0 && dy === 0) return
+    // delta 是指针位移，窗口 1:1 跟随——与窗口/球壳原点无关（v0.5.0 曾在此加
+    // INSET/BAND 补偿，属画蛇添足：零 delta 的 pointermove 会让窗口瞬移并污染存档，已撤）
     win.setPosition(this.dragState.win.x + dx, this.dragState.win.y + dy)
   }
 
@@ -107,6 +119,7 @@ export class WindowManager {
     const win = this.ball
     if (win && !win.isDestroyed()) {
       const [x, y] = win.getPosition()
+      // 存窗口原点（含气泡带），与 createBallWindow 读入语义一致
       this.config.set('ballPosition', { x, y })
     }
   }
@@ -119,7 +132,11 @@ export class WindowManager {
       return false
     }
     const ball = this.ball
-    const anchor = ball ? ball.getBounds() : { x: 0, y: 0, width: BALL_SIZE, height: BALL_SIZE }
+    // v0.5.0：锚点用球体屏幕矩形（窗口原点 + 气泡带偏移 + 左右留白）
+    const b = ball && !ball.isDestroyed() ? ball.getBounds() : null
+    const anchor = b
+      ? { x: b.x + BALL_WINDOW_INSET_X, y: b.y + BUBBLE_BAND, width: BALL_SIZE, height: BALL_SIZE }
+      : { x: 0, y: 0, width: BALL_SIZE, height: BALL_SIZE }
     const { x: px, y: py } = this.clampPanelPosition(anchor)
 
     const win = new BrowserWindow({

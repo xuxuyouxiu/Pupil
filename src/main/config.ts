@@ -7,8 +7,10 @@ import * as path from 'path'
 import { dataDir } from '../adapters/http-ingest/auth'
 
 export interface AppConfig {
-  /** 悬浮球窗口位置（屏幕坐标） */
+  /** 悬浮球窗口位置（屏幕坐标，v0.5.0 起为含气泡带的窗口原点） */
   ballPosition?: { x: number; y: number }
+  /** v0.5.0 一次性迁移标记：旧版球坐标已补偿气泡带高度 */
+  bubbleBandMigrated?: boolean
   /** 勿扰模式 */
   dnd?: boolean
   /** 总静音 */
