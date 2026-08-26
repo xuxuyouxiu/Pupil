@@ -19,7 +19,9 @@ function getCtx(): AudioContext | null {
   }
 }
 
-export type SoundType = 'done' | 'waiting' | 'error' | 'timeout' | 'offline'
+export type SoundType = SoundKind
+export type { SoundKind } from '../../shared/events'
+import type { SoundKind } from '../../shared/events'
 export type SoundPackId = 'chime' | 'wood' | 'chip' | 'alarm'
 
 /** 一段包络音的合成参数 */
@@ -60,7 +62,12 @@ const PACKS: Record<SoundPackId, SoundPack> = {
         { freq: 330, start: 0, dur: 0.18, type: 'triangle' },
         { freq: 330, start: 0.26, dur: 0.18, type: 'triangle' }
       ],
-      offline: [{ freq: 220, start: 0, dur: 0.22, type: 'triangle' }]
+      offline: [{ freq: 220, start: 0, dur: 0.22, type: 'triangle' }],
+      // 会话结束：下行双音「收工」（与 done 上行琶音方向相反，盲听可区分）
+      ended: [
+        { freq: 659.26, start: 0, dur: 0.12 },
+        { freq: 440, start: 0.14, dur: 0.22, gain: 0.8 }
+      ]
     }
   },
   /** 木质敲击：短促三角波，木鱼质感 */
@@ -86,7 +93,12 @@ const PACKS: Record<SoundPackId, SoundPack> = {
         { freq: 247, start: 0.15, dur: 0.1, type: 'triangle' },
         { freq: 233, start: 0.3, dur: 0.12, type: 'triangle' }
       ],
-      offline: [{ freq: 165, start: 0, dur: 0.15, type: 'triangle' }]
+      offline: [{ freq: 165, start: 0, dur: 0.15, type: 'triangle' }],
+      // 会话结束：低八度回落，木鱼双敲收工
+      ended: [
+        { freq: 392, start: 0, dur: 0.06, type: 'triangle' },
+        { freq: 261.63, start: 0.1, dur: 0.12, type: 'triangle', gain: 0.8 }
+      ]
     }
   },
   /** 8-bit 电子：方波琶音，游戏机风 */
@@ -113,7 +125,13 @@ const PACKS: Record<SoundPackId, SoundPack> = {
         { freq: 370, start: 0.2, dur: 0.12, type: 'square', gain: 0.45 },
         { freq: 349, start: 0.4, dur: 0.16, type: 'square', gain: 0.45 }
       ],
-      offline: [{ freq: 147, start: 0, dur: 0.25, type: 'square', gain: 0.45 }]
+      offline: [{ freq: 147, start: 0, dur: 0.25, type: 'square', gain: 0.45 }],
+      // 会话结束：游戏机「关卡结束」下行琶音
+      ended: [
+        { freq: 784, start: 0, dur: 0.08, type: 'square', gain: 0.5 },
+        { freq: 523, start: 0.1, dur: 0.08, type: 'square', gain: 0.5 },
+        { freq: 392, start: 0.2, dur: 0.16, type: 'square', gain: 0.5 }
+      ]
     }
   },
   /** 低音警示：低频慢鸣，严肃场景不刺耳 */
@@ -140,7 +158,12 @@ const PACKS: Record<SoundPackId, SoundPack> = {
         { freq: 207.65, start: 0.32, dur: 0.22 },
         { freq: 207.65, start: 0.64, dur: 0.3 }
       ],
-      offline: [{ freq: 103.83, start: 0, dur: 0.4, type: 'triangle' }]
+      offline: [{ freq: 103.83, start: 0, dur: 0.4, type: 'triangle' }],
+      // 会话结束：缓落双音，低音收工不刺耳
+      ended: [
+        { freq: 493.88, start: 0, dur: 0.2, gain: 0.85 },
+        { freq: 329.63, start: 0.24, dur: 0.34, gain: 0.85 }
+      ]
     }
   }
 }

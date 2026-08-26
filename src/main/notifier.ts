@@ -11,15 +11,6 @@ import { AgentEvent, SessionView } from '../shared/events'
 import { IPC } from '../shared/ipc-channels'
 import { ConfigStore } from './config'
 
-/** 按展示态选择合成音效类型（renderer 端 Web Audio 合成） */
-const SOUND_BY_STATE: Record<string, string> = {
-  done: 'done',
-  waiting: 'waiting',
-  error: 'error',
-  timeout: 'timeout',
-  offline: 'offline'
-}
-
 /** Toast 点击行为回调（由 main 注入：激活会话对应终端窗口） */
 export type ToastClickHandler = (view: SessionView) => void
 
@@ -43,11 +34,12 @@ export class Notifier {
     view?: SessionView
   ): void => {
     // 音效：驱动球窗 renderer 播放（指令携带最新音色包/音量）
+    // v0.4.1：soundType 与展示态解耦（session_ended → 专属「收工」音），由规则引擎显式给出
     if (strategy.sound) {
       const ball = this.getBall()
       if (ball && !ball.isDestroyed()) {
         ball.webContents.send(IPC.soundPlay, {
-          type: SOUND_BY_STATE[strategy.displayState] ?? 'done',
+          type: strategy.soundType ?? 'done',
           pack: this.config?.get('soundPack') ?? 'chime',
           volume: this.config?.get('soundVolume') ?? 0.8
         })

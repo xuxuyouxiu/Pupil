@@ -64,6 +64,8 @@ export class MonitoringCore {
         codex: config.get('timeoutThresholdMs') ?? 10 * 60 * 1000
       }
     })
+    // v0.4.1：超时/断连标记首次翻转 → 音效+Toast（此前只变色不出声）
+    this.inference.onFlagNotified = (kind, view) => this.notifyInferredFlag(kind, view)
   }
 
   /** 订阅快照广播；返回取消订阅函数 */
@@ -125,6 +127,31 @@ export class MonitoringCore {
       const changed = this.inference.tick()
       if (changed.length > 0) this.broadcast()
     }, 1000)
+  }
+
+  /** 推断标记首次翻转（timeout/disconnected）→ 走完整通知链（v0.4.1 补上此前缺失的声音） */
+  private notifyInferredFlag(kind: 'timeout' | 'disconnected', view: SessionView): void {
+    if (this.dnd || this.muted) return
+    const who = view.title || view.sessionId
+    const strategy =
+      kind === 'timeout'
+        ? {
+            displayState: 'timeout' as const,
+            sound: true,
+            soundType: 'timeout' as const,
+            toast: true,
+            title: `${who} 已超时`,
+            body: `${view.agentType} 会话超过 ${Math.round((this.config.get('timeoutThresholdMs') ?? 600000) / 60000)} 分钟无活动`
+          }
+        : {
+            displayState: 'offline' as const,
+            sound: true,
+            soundType: 'offline' as const,
+            toast: true,
+            title: `${who} 连接中断`,
+            body: `${view.agentType} 会话运行中静默断连`
+          }
+    this.notifyExecutor?.(strategy, { source: 'inference', agentType: view.agentType, sessionId: view.sessionId, eventType: 'heartbeat', timestamp: Date.now() }, view)
   }
 
   async stop(): Promise<void> {

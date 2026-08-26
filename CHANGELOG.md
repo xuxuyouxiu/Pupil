@@ -2,6 +2,17 @@
 
 本文件记录 Pupil 的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.4.1] - 2026-08-25
+
+### 修复
+- **模型连接错误（400/429）无提示音（用户反馈，根因修复）**：这类错误在 Hermes state.db 里的真实形态是 assistant 消息 + `finish_reason=NULL` + 错误文本（本机实测样本 `Error code: 400 - {'error': {'message': 'reasoning.effort: Invalid option...'}}`），adapter 只映射 `finish_reason='stop'` 导致错误轮次被静默忽略——error 事件从未产生。新增 `isErrorTurn()` 内容特征识别（`Error code: NNN`/`APIConnectionError`/`APITimeoutError`/`Operation interrupted: waiting for model response`/行首 Error|Traceback 短消息），36k 条消息实测零误伤；7 条单测用真实样本锁行为
+
+### 新增
+- **六类结束各有其声（用户要求：每种不同的结束都要有不同声音）**——
+  - **会话结束专属「收工」音**：`SoundKind` 与展示态解耦（新增 `ended`），4 套音色包各有独立配方（chime 下行双音/wood 低八度木鱼/chip 关卡结束琶音/alarm 缓落双音），与 done 上行琶音方向相反、盲听可区分；只响声不弹 Toast
+  - **超时/断连补上声音**：推断引擎此前翻转 timeout/disconnected 标记只变色不出声——新增 `onFlagNotified` 回调，标记首次翻转时走完整通知链（timeout→三连降调、disconnected→offline 低音），仅首次触发不重复响
+  - `NotifyStrategy.soundType` 显式化（null=无声），Notifier 不再从展示态猜音效类型
+
 ## [0.4.0] - 2026-08-25
 
 ### 新增

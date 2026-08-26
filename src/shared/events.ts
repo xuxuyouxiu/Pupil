@@ -87,6 +87,9 @@ export type DisplayState =
   | 'offline' // 断连
   | 'idle' // 空闲
 
+/** 提示音类型（与展示态解耦：session_ended 有专属「收工」音，其余与展示态同名） */
+export type SoundKind = 'done' | 'waiting' | 'error' | 'timeout' | 'offline' | 'ended'
+
 /** 状态优先级：高 → 低（error > timeout > offline > waiting > running > done > idle） */
 export const DISPLAY_PRIORITY: Record<DisplayState, number> = {
   error: 7,

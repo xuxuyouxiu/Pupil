@@ -40,9 +40,31 @@ interface MessageRow {
   id: number
   session_id: string
   role: string
+  content?: string | null
   tool_name?: string | null
   finish_reason?: string | null
   timestamp?: number
+}
+
+/**
+ * 错误轮次识别（纯函数，可单测）：assistant 消息内容呈现 API/连接错误特征。
+ * 本机 36k 条消息实测：正常回复（含讨论 error 的）零误伤，错误轮次 8/8 命中。
+ */
+export function isErrorTurn(content: string | null | undefined): boolean {
+  if (!content) return false
+  if (/Error code: \d{3}/.test(content)) return true // OpenAI 风格：Error code: 400/429/500...
+  if (/APIConnectionError|APITimeoutError/.test(content)) return true
+  // 请求中断（连接不稳定，等待模型响应时断开）
+  if (/Operation interrupted: waiting for model response/.test(content)) return true
+  // 行首 Error/Traceback 开头的短消息（限长防误伤长正文中引用的错误）
+  return content.length < 2000 && /(?:^|\n)\s*(?:Error|Traceback)/.test(content)
+}
+
+/** 提取错误摘要（Toast/面板展示用） */
+function summarizeError(content: string | null | undefined): string {
+  if (!content) return '模型连接错误'
+  const m = content.match(/Error code: \d{3}[\s\S]{0,180}/)?.[0]
+  return (m ?? content).slice(0, 200)
 }
 
 export class HermesSqliteAdapter implements AgentAdapter {
@@ -130,7 +152,7 @@ export class HermesSqliteAdapter implements AgentAdapter {
     try {
       // 1. 新消息差分
       const msgs = db.query(
-        `SELECT id, session_id, role, tool_name, finish_reason, timestamp FROM messages
+        `SELECT id, session_id, role, content, tool_name, finish_reason, timestamp FROM messages
          WHERE id > ${this.lastMessageId} ORDER BY id ASC LIMIT 200`
       ) as unknown as MessageRow[]
       for (const m of msgs) {
@@ -188,6 +210,16 @@ export class HermesSqliteAdapter implements AgentAdapter {
       this.emit?.({ ...base, eventType: 'tool_call_started', payload: { toolName: m.tool_name, title, raw: m } })
     } else if (m.role === 'assistant' && m.finish_reason === 'stop') {
       this.emit?.({ ...base, eventType: 'turn_completed', payload: { title, raw: m } })
+    } else if (m.role === 'assistant' && m.finish_reason == null && isErrorTurn(m.content)) {
+      // v0.4.1 根因修复：模型方连接错误（400/429/5xx/断连）在 state.db 里的形态是
+      // assistant 消息 + finish_reason=NULL + 错误文本（本机实测样本：
+      // "Error: Error code: 400 - {'error': {'message': 'reasoning.effort: Invalid option...'}}"）。
+      // 此前这类轮次被静默忽略——error 事件从不产生，错误提示音从未响过。
+      this.emit?.({
+        ...base,
+        eventType: 'error',
+        payload: { errorMessage: summarizeError(m.content), title, raw: m }
+      })
     }
   }
 

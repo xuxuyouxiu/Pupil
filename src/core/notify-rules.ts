@@ -3,7 +3,7 @@
  * 对应 UIUX 文档第 4 节"声音与系统通知映射"表。
  * 纯规则，不依赖 electron；主进程拿到策略后执行具体动作（播放音效/发 Toast）。
  */
-import { AgentEvent, DisplayState, toDisplayState, SessionView } from '../shared/events'
+import { AgentEvent, DisplayState, SoundKind, toDisplayState, SessionView } from '../shared/events'
 
 /** 提醒策略 */
 export interface NotifyStrategy {
@@ -11,6 +11,8 @@ export interface NotifyStrategy {
   displayState: DisplayState
   /** 是否播放音效 */
   sound: boolean
+  /** 音效类型（v0.4.1：与展示态解耦——session_ended 有专属「收工」音；null = 该事件无声） */
+  soundType: SoundKind | null
   /** 是否弹系统通知 */
   toast: boolean
   /** 通知标题（Toast 用） */
@@ -87,9 +89,18 @@ export function resolveStrategy(
   const display = eventToDisplayState(event) ?? (view ? toDisplayState(view) : 'idle')
 
   // 视觉通道永远保留；dnd/静音只影响 sound 与 toast
+  // v0.4.1：音效类型与展示态解耦——session_ended 专属「收工」音，
+  // 其余可发声展示态同名；running/idle/initializing 无声
+  const soundType: SoundKind | null =
+    event.eventType === 'session_ended'
+      ? 'ended'
+      : display === 'done' || display === 'waiting' || display === 'error' || display === 'timeout' || display === 'offline'
+        ? display
+        : null
   const strategy: NotifyStrategy = {
     displayState: display,
     sound: false,
+    soundType,
     toast: false
   }
 
@@ -100,15 +111,15 @@ export function resolveStrategy(
   strategy.title = title
   strategy.body = body
 
-  // 音效：done/waiting/error/timeout/offline 触发，running/idle 不触发
-  if (!opts.muted && display !== 'idle' && display !== 'running') {
+  // 音效：六类结束各有其声——done/waiting/error/timeout/offline/ended
+  if (!opts.muted && soundType) {
     strategy.sound = true
   }
   // Toast：与音效同样的事件集（offline 也提示）
   if (display !== 'running' && display !== 'idle') {
     strategy.toast = true
   } else if (event.eventType === 'session_ended') {
-    strategy.toast = false // 会话结束不弹通知（避免噪音）
+    strategy.toast = false // 会话结束只响「收工」音，不弹通知（避免噪音）
   }
 
   return strategy

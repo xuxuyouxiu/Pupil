@@ -21,7 +21,17 @@ export interface InferenceOptions {
   now?: () => number
 }
 
+/** 推断出的叠加标记种类 */
+export type InferredFlag = 'timeout' | 'disconnected'
+
 export class InferenceEngine {
+  /**
+   * v0.4.1：标记首次翻转时的通知回调——timeout/disconnected 此前只变色不出声，
+   * 用户要求「每种结束都有不同的声音提醒」。引擎只保证「从无到有」时恰好调一次，
+   * 去重/勿扰/静音判断在回调执行端。
+   */
+  onFlagNotified: ((kind: InferredFlag, view: SessionView) => void) | null = null
+
   constructor(
     private registry: SessionRegistry,
     private options: InferenceOptions
@@ -33,9 +43,12 @@ export class InferenceEngine {
     for (const view of this.registry.snapshot()) {
       const elapsed = now - view.lastEventAt
       const next = { ...view.flags }
+      /** 本轮新翻的标记（上一轮没有、这一轮有）——只有首次翻转才通知，避免每秒重复响 */
+      let kind: InferredFlag | null = null
 
       // timeout：非 idle 状态且超阈值
       if (view.state !== 'idle' && elapsed >= this.options.timeoutThresholdMs) {
+        if (!view.flags.timeout) kind = 'timeout'
         next.timeout = true
       }
       // disconnected：仅"运行中"（thinking/tool_calling）静默超阈值才算断连——
@@ -48,13 +61,18 @@ export class InferenceEngine {
         (view.state === 'thinking' || view.state === 'tool_calling') &&
         elapsed >= threshold
       ) {
+        // timeout 与断连同时命中时 timeout 优先（更严重的语义）
+        if (!view.flags.disconnected && kind === null) kind = 'disconnected'
         next.disconnected = true
       }
 
       const cur = view.flags
       if (next.timeout !== cur.timeout || next.disconnected !== cur.disconnected) {
         const updated = this.registry.setFlags(view.key, next)
-        if (updated) changed.push(updated)
+        if (updated) {
+          changed.push(updated)
+          if (kind) this.onFlagNotified?.(kind, updated)
+        }
       }
     }
     return changed
