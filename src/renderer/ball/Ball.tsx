@@ -39,39 +39,25 @@ function aggregateState(views: SessionView[]): DisplayState {
 
 /** bloub 三点横向几何（球半径单位 × 21px）——弹跳球沿用同一横向节奏 */
 const DOT_X = [-11.7, -0.3, 11.2]
-/** 弹跳延迟（uiverse grumpy-turtle-41 原版：0 / +0.2s / +0.3s 交错波） */
-const BOUNCE_DELAYS = [0, 0.2, 0.3]
+/** 点半径（bloub 0.165 × 21px ≈ 3.5） */
+const DOT_R = 3.5
 
 /**
- * 弹跳加载（v0.4.5，用户指定 uiverse mobinkakei/grumpy-turtle-41）：
- * 三个白球交替弹跳——落地压扁(scaleX1.5/scaleY0.35)、起跳拉圆，影子同步缩放；
- * 黑色球体留在原地当底板，白球在黑球里弹，任何壁纸都有对比度。
+ * 三点波浪加载（v0.5.2 换回官方：用户反馈「加载图标是网上找的，换官方的看看」）。
+ * 对照 bloub dotPulse 测量：三白点横向 -0.557/-0.013/+0.532（×21px），r=0.165×21≈3.5，
+ * 1.5s 一轮、相位差 0.5s、峰值 ×1.25 + opacity 0.55→1（半余弦「跳一下歇一下」），
+ * 波从左到右扫过。黑色球体留在原地当底板（v0.4.5），白点任何壁纸都有对比度。
  */
-function BounceLoader() {
+function ThinkingDots() {
   return (
     <g>
-      {/* 地面柔光标记：先画（球下层），随弹跳缩放变淡 */}
-      {BOUNCE_DELAYS.map((d, i) => (
-        <ellipse
-          key={`s${i}`}
-          className="bounce-shadow"
-          style={{ animationDelay: `${d}s` }}
-          cx={28 + DOT_X[i]}
-          cy={36.8}
-          rx={4.4}
-          ry={1.15}
-          fill="#ffffff"
-        />
-      ))}
-      {/* 弹跳球：白球，落地压扁起跳变圆 */}
-      {BOUNCE_DELAYS.map((d, i) => (
+      {[0, 1, 2].map((i) => (
         <circle
           key={i}
-          className="bounce-ball"
-          style={{ animationDelay: `${d}s` }}
+          className={`tdot tdot-${i}`}
           cx={28 + DOT_X[i]}
-          cy={33.5}
-          r={3.4}
+          cy={28}
+          r={i === 1 ? DOT_R * 1.06 : DOT_R}
           fill="var(--eye-white)"
         />
       ))}
@@ -309,7 +295,7 @@ export function Ball() {
             }${pokePulse > 0 && mood !== 'dizzy' ? ' ball-poke' : ''}`}
           />
           {/* v0.4.5 变形/加载层（画在球体之后 = 黑球底板之上） */}
-          {display === 'running' && <BounceLoader />}
+          {display === 'running' && <ThinkingDots />}
           {display === 'error' && <Exclaim />}
           {display === 'offline' && <SleepDot />}
           {/* 中心：精灵眼（互动 mood 优先；变形态由 EyeSystem 内部返回 null） */}

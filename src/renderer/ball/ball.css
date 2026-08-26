@@ -203,42 +203,35 @@ body {
   transform: scale(0);
 }
 
-/* 弹跳加载（v0.4.4，uiverse mobinkakei/grumpy-turtle-41 移植）：
-   三球交替弹跳——落地压扁(scaleX1.5/scaleY0.35)、升空变圆，0.5s alternate ease；
-   影子同步缩放变淡。transform-origin 在球底：压扁时贴地不悬空 */
-.bounce-ball {
-  transform-box: fill-box;
-  transform-origin: center bottom;
-  animation: bounce-jump 0.5s alternate infinite ease;
-}
-@keyframes bounce-jump {
-  0% {
-    transform: translateY(0) scale(1.5, 0.35);
-  }
-  40% {
-    transform: translateY(-3px) scale(1, 1);
-  }
-  100% {
-    transform: translateY(-7.5px) scale(1, 1);
-  }
-}
-.bounce-shadow {
+/* 三点加载（v0.5.2 换回官方 bloub dotPulse 测量）：波从左到右扫过，
+   每点 1.5s 一轮、相位差 0.5s——半余弦升到峰值再瞬落，占空比 50%（「跳一下歇一下」）。 
+   黑球留原地当底板（v0.4.5），白点任何壁纸都有对比度 */
+.tdot {
   transform-box: fill-box;
   transform-origin: center;
-  animation: bounce-shadow 0.5s alternate infinite ease;
+  animation: tdot-pulse 1.5s ease-in-out infinite;
 }
-@keyframes bounce-shadow {
+.tdot-0 {
+  animation-delay: 0s;
+}
+.tdot-1 {
+  animation-delay: 0.5s;
+}
+.tdot-2 {
+  animation-delay: 1s;
+}
+@keyframes tdot-pulse {
   0% {
-    transform: scaleX(1.5);
-    opacity: 0.5;
+    transform: scale(1);
+    opacity: 0.55;
   }
-  40% {
-    transform: scaleX(1);
-    opacity: 0.65;
+  50% {
+    transform: scale(1.25);
+    opacity: 1;
   }
   100% {
-    transform: scaleX(0.2);
-    opacity: 0.3;
+    transform: scale(1);
+    opacity: 0.55;
   }
 }
 
