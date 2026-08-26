@@ -17,22 +17,42 @@ function aggregateState(views: SessionView[]): DisplayState {
     .sort((a, b) => DISPLAY_PRIORITY[b] - DISPLAY_PRIORITY[a])[0]
 }
 
-/** bloub 实测三点加载几何（球半径单位 × 21px）：x = -0.557/-0.013/+0.532，r = 0.165（峰值 ×1.25 走 CSS 动画） */
+/** bloub 三点横向几何（球半径单位 × 21px）——弹跳球沿用同一横向节奏 */
 const DOT_X = [-11.7, -0.3, 11.2]
-const DOT_R = 3.5
+/** 弹跳延迟（uiverse grumpy-turtle-41 原版：0 / +0.2s / +0.3s 交错波） */
+const BOUNCE_DELAYS = [0, 0.2, 0.3]
 
-/** 三点波浪脉动（GrokBot 原版 thinking 态：球缩成中间点，两侧点从球身冒出，波从左到右） */
-function ThinkingDots() {
+/**
+ * 弹跳加载（v0.4.4，用户指定 uiverse mobinkakei/grumpy-turtle-41）：
+ * 三个白球交替弹跳——落地压扁(scaleX1.5/scaleY0.35)、起跳拉圆，地面影子同步缩放；
+ * 0.5s alternate ease，白球黑影（用户要求去掉蓝色）。
+ */
+function BounceLoader() {
   return (
-    <g className="tdots-layer">
-      {[0, 1, 2].map((i) => (
+    <g>
+      {/* 地面阴影：先画（在球下层），模糊椭圆随弹跳缩放变淡 */}
+      {BOUNCE_DELAYS.map((d, i) => (
+        <ellipse
+          key={`s${i}`}
+          className="bounce-shadow"
+          style={{ animationDelay: `${d}s` }}
+          cx={28 + DOT_X[i]}
+          cy={36.8}
+          rx={4.4}
+          ry={1.15}
+          fill="#000000"
+        />
+      ))}
+      {/* 弹跳球：白球，落地压扁起跳变圆 */}
+      {BOUNCE_DELAYS.map((d, i) => (
         <circle
           key={i}
-          className={`tdot tdot-${i}`}
+          className="bounce-ball"
+          style={{ animationDelay: `${d}s` }}
           cx={28 + DOT_X[i]}
-          cy={28}
-          r={i === 1 ? DOT_R * 1.06 : DOT_R} // 中间点略大（原版是球缩成的）
-          fill="var(--state-running)"
+          cy={33.5}
+          r={3.4}
+          fill="var(--eye-white)"
         />
       ))}
     </g>
@@ -146,9 +166,9 @@ export function Ball() {
       title={sessions.length > 0 ? `Pupil · ${sessions.length} 个会话` : 'Pupil · 等待 Agent 会话接入'}
     >
       <svg className="ball" viewBox="0 0 56 56" aria-hidden="true">
-        {/* v0.4.3 球体变形态：球本身成为动画（GrokBot 原版做法）——
-            running=三点加载 error=感叹号 offline=睡眠弹跳点，此时隐藏球体与眼睛 */}
-        {display === 'running' && <ThinkingDots />}
+        {/* v0.4.4 球体变形态：球本身成为动画——
+            running=弹跳加载 error=感叹号 offline=睡眠弹跳点，此时隐藏球体与眼睛 */}
+        {display === 'running' && <BounceLoader />}
         {display === 'error' && <Exclaim />}
         {display === 'offline' && <SleepDot />}
         {/* 中层：球体——纯黑正圆（x.ai 实测 #0a0a0c），变形态隐藏；出错抖动/空闲微呼吸保留 */}
