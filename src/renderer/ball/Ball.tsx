@@ -23,14 +23,16 @@ const DOT_X = [-11.7, -0.3, 11.2]
 const BOUNCE_DELAYS = [0, 0.2, 0.3]
 
 /**
- * 弹跳加载（v0.4.4，用户指定 uiverse mobinkakei/grumpy-turtle-41）：
- * 三个白球交替弹跳——落地压扁(scaleX1.5/scaleY0.35)、起跳拉圆，地面影子同步缩放；
- * 0.5s alternate ease，白球黑影（用户要求去掉蓝色）。
+ * 弹跳加载（v0.4.5，用户指定 uiverse mobinkakei/grumpy-turtle-41）：
+ * 三个白球交替弹跳——落地压扁(scaleX1.5/scaleY0.35)、起跳拉圆，影子同步缩放；
+ * v0.4.5 修复：白球浮在透明窗口上，浅色壁纸直接隐形（用户看到「灰色圆球」就是
+ * 白球隐形只剩影子）——黑色球体不再隐藏、留在原地当底板，白球在黑球里弹，
+ * 任何壁纸都有对比度；影子改白色柔光（黑底可见）。
  */
 function BounceLoader() {
   return (
     <g>
-      {/* 地面阴影：先画（在球下层），模糊椭圆随弹跳缩放变淡 */}
+      {/* 地面柔光标记：先画（球下层），随弹跳缩放变淡 */}
       {BOUNCE_DELAYS.map((d, i) => (
         <ellipse
           key={`s${i}`}
@@ -40,7 +42,7 @@ function BounceLoader() {
           cy={36.8}
           rx={4.4}
           ry={1.15}
-          fill="#000000"
+          fill="#ffffff"
         />
       ))}
       {/* 弹跳球：白球，落地压扁起跳变圆 */}
@@ -166,12 +168,8 @@ export function Ball() {
       title={sessions.length > 0 ? `Pupil · ${sessions.length} 个会话` : 'Pupil · 等待 Agent 会话接入'}
     >
       <svg className="ball" viewBox="0 0 56 56" aria-hidden="true">
-        {/* v0.4.4 球体变形态：球本身成为动画——
-            running=弹跳加载 error=感叹号 offline=睡眠弹跳点，此时隐藏球体与眼睛 */}
-        {display === 'running' && <BounceLoader />}
-        {display === 'error' && <Exclaim />}
-        {display === 'offline' && <SleepDot />}
-        {/* 中层：球体——纯黑正圆（x.ai 实测 #0a0a0c），变形态隐藏；出错抖动/空闲微呼吸保留 */}
+        {/* 中层：球体——纯黑正圆。running 时保留当底板（白球在球内弹，浅色壁纸也清晰）；
+            error/offline 变形时隐藏 */}
         <circle
           cx={28}
           cy={28}
@@ -180,13 +178,18 @@ export function Ball() {
           className={
             display === 'done'
               ? 'ball-bounce'
-              : display === 'error' || display === 'running' || display === 'offline'
+              : display === 'error' || display === 'offline'
                 ? 'ball-morph-hide'
                 : display === 'idle'
                   ? 'ball-breathe'
                   : ''
           }
         />
+        {/* v0.4.5 变形/加载层（画在球体之后 = 黑球底板之上）：
+            running=弹跳加载 error=感叹号 offline=睡眠弹跳点；眼睛态由 EyeSystem 表达 */}
+        {display === 'running' && <BounceLoader />}
+        {display === 'error' && <Exclaim />}
+        {display === 'offline' && <SleepDot />}
         {/* 中心：精灵眼（变形态由 EyeSystem 内部返回 null） */}
         <g className="eye-layer">
           <EyeSystem mode={display} />
