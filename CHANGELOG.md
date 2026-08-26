@@ -2,6 +2,11 @@
 
 本文件记录 Pupil 的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.5.1] - 2026-08-26
+
+### 修复
+- **眼睛不再斜视**（用户反馈「眼睛一直从左上到右下、像一直看着左边」）：TILT=-26° 平行斜眼全状态常驻是参考文件「idle 斜 26°」的误读——对照 bloub 源码（expressions.ts）：`neutre`（中性态）眼睛 `eye(EYE_W, EYE_H)` 无 tilt 纯水平；斜眼只属于 colere/triste 等情绪表情且镜像对称（`pair()` = `[+tilt, -tilt]`）。修复：眼睛 0° 水平，深度压缩/光标跟随/待机张望/歪头全部保留
+
 ## [0.5.0] - 2026-08-26
 
 ### 新增

@@ -37,7 +37,11 @@ const EYE_CY = 28
 const EYE_GAP = 15.2 // 两眼中心距
 const EYE_RX = 5.1 // 胶囊横半径
 const EYE_RY = 7.4 // 胶囊纵半径
-const TILT = -26 // `\` 方向倾斜（SVG 正角为顺时针，负号得到左上-右下）
+// v0.5.1：眼睛完全水平（tilt=0）——对齐 bloub 中性态（expressions.ts neutre：eye(EYE_W,EYE_H) 无 tilt）。
+// 此前 TILT=-26° 平行斜眼全状态常驻是参考文件「idle 斜 26°」的误读：bloub 源码里斜眼
+// 只属于 colere/triste 等情绪表情且镜像对称（[+tilt, -tilt]），静息是纯水平。
+// 平行 \ 斜眼视觉上像「一直看左」，用户已确认修复。
+const TILT = 0
 /** 注视单位向量 → 像素换算 */
 const OX_MAX = 2.8
 const OY_MAX = 2.0
