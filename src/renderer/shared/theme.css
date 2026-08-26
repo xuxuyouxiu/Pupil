@@ -27,14 +27,14 @@
   --state-timeout: #db6d28;
   --state-offline: #8b949e;
 
-  /* 透明度 Token */
-  --orb-idle-alpha: 0.55;
-  --orb-hover-alpha: 0.95;
-  --orb-active-alpha: 0.92; /* 有活跃状态（运行/等待/错误/超时等）时更醒目 */
+  /* 透明度 Token —— v0.4.3 用户要求：球体常实不透明（待机不再 0.55 半透明） */
+  --orb-idle-alpha: 1;
+  --orb-hover-alpha: 1;
+  --orb-active-alpha: 1;
   --panel-alpha: 1; /* 面板全不透明：半透明底在浅色壁纸上内容看不清（用户反馈） */
 
-  /* 精灵眼球体 Token —— v0.4.0 球体纯黑化（x.ai 实测 #0a0a0c），高光移除 */
-  --orb-body: #0a0a0c;
+  /* 精灵眼球体 Token —— v0.4.3 纯黑（用户要求），高光移除 */
+  --orb-body: #000000;
   --orb-highlight: #21262d;
   --eye-white: #f0f6fc;
   --eye-pupil: #0d1117;

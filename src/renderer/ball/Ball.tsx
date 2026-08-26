@@ -1,36 +1,13 @@
 /**
  * Ball —— 悬浮球主体
- * 三层结构（UIUX 文档方案 A）：
- *   外层：按会话分段的状态环（每段弧 = 一个会话）
- *   中层：黑色球体 + 微弱高光
- *   中心：EyeSystem 精灵眼（最高优先级状态的表情）
+ * v0.4.3：外圈状态环整体移除（用户反馈：环不动不亮没效果）——
+ * 状态全部由球体本身表达（GrokBot 原版做法）：眼睛表情/三点加载/感叹号/睡眠点。
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import {
-  DISPLAY_PRIORITY,
-  DisplayState,
-  SessionView,
-  toDisplayState
-} from '../../shared/events'
+import { DISPLAY_PRIORITY, DisplayState, SessionView, toDisplayState } from '../../shared/events'
 import { EyeSystem } from './EyeSystem'
 import { useSessions } from './use-sessions'
 import { playSound, setSoundConfig } from './sound'
-
-const R = 24.5
-const CIRC = 2 * Math.PI * R
-const SEG_GAP = 3.2
-const MAX_SEGMENTS = 5
-
-const STATE_COLOR: Record<DisplayState, string> = {
-  initializing: 'var(--state-running)',
-  running: 'var(--state-running)',
-  waiting: 'var(--state-waiting)',
-  done: 'var(--state-done)',
-  error: 'var(--state-error)',
-  timeout: 'var(--state-timeout)',
-  offline: 'var(--state-offline)',
-  idle: 'var(--state-offline)'
-}
 
 /** 聚合最高优先级展示态 */
 function aggregateState(views: SessionView[]): DisplayState {
@@ -38,114 +15,6 @@ function aggregateState(views: SessionView[]): DisplayState {
   return views
     .map(toDisplayState)
     .sort((a, b) => DISPLAY_PRIORITY[b] - DISPLAY_PRIORITY[a])[0]
-}
-
-/** 环动画类名（聚合态 -> 环动画） */
-function ringAnimClass(state: DisplayState): string {
-  switch (state) {
-    case 'running':
-      return 'ring-rotate'
-    case 'waiting':
-      return 'ring-breathe'
-    case 'error':
-      return 'ring-flash'
-    case 'timeout':
-      return 'ring-slow-flash'
-    default:
-      return ''
-  }
-}
-
-/** 按会话绘制分段弧；>5 会话时合并为单色环。
- *  v0.4.0：running/initializing 不再是静态弧——改为「彗星轨道」：
- *  一个亮点拖着渐隐尾巴绕球转（参考 bloub 对 x.ai comet 态的测量：点不动、尾绕行） */
-function RingSegments({ views }: { views: SessionView[] }) {
-  // 注意：所有环都必须显式指定 cx/cy=28（SVG 默认圆心是 (0,0)/viewBox 左上角，
-  // 漏写会导致弧线画到窗口角落——曾因此出现"球顶两段悬空弧线"）
-  const CX = 28
-  const CY = 28
-  if (views.length === 0) {
-    return (
-      <circle cx={CX} cy={CY} r={R} fill="none" stroke="var(--state-offline)" strokeWidth={1.4} opacity={0.5} />
-    )
-  }
-  if (views.length > MAX_SEGMENTS) {
-    const agg = aggregateState(views)
-    if (agg === 'running') return null // 三点加载就是加载器，不再叠加环
-    if (agg === 'initializing') return <Comet delay={0} />
-    return (
-      <circle
-        cx={CX}
-        cy={CY}
-        r={R}
-        fill="none"
-        stroke={STATE_COLOR[agg]}
-        strokeWidth={1.8}
-        className={ringAnimClass(agg)}
-      />
-    )
-  }
-  const len = (CIRC - SEG_GAP * views.length) / views.length
-  return (
-    <>
-      {views.map((view, i) => {
-        const state = toDisplayState(view)
-        if (state === 'running') {
-          // running 由三点加载表达（GrokBot 原版：球即加载器），不画环段
-          return null
-        }
-        if (state === 'initializing') {
-          return <Comet key={view.key} delay={-i * 0.55} />
-        }
-        const color = STATE_COLOR[state]
-        const offset = CIRC / 4 - i * (len + SEG_GAP)
-        return (
-          <circle
-            key={view.key}
-            cx={CX}
-            cy={CY}
-            r={R}
-            fill="none"
-            stroke={color}
-            strokeWidth={1.8}
-            strokeLinecap="round"
-            strokeDasharray={`${len} ${CIRC - len}`}
-            strokeDashoffset={offset}
-            className={ringAnimClass(state)}
-          />
-        )
-      })}
-    </>
-  )
-}
-
-/** 彗星轨道：头部亮点 + 双层渐隐尾，绕球心旋转（delay 秒相位差，负值即错开） */
-function Comet({ delay }: { delay: number }) {
-  return (
-    <g className="comet-orbit" style={{ animationDelay: `${delay}s` }}>
-      {/* 尾巴外层：长而淡 */}
-      <path
-        d="M 27.9 1.2 A 26.8 26.8 0 0 1 48.9 10.6"
-        fill="none"
-        stroke="var(--state-running)"
-        strokeWidth={1.1}
-        strokeLinecap="round"
-        opacity={0.28}
-      />
-      {/* 尾巴内层：短而亮（靠近头部更实） */}
-      <path
-        d="M 27.95 1.7 A 26.3 26.3 0 0 1 41.2 7.3"
-        fill="none"
-        stroke="var(--state-running)"
-        strokeWidth={1.6}
-        strokeLinecap="round"
-        opacity={0.6}
-      />
-      {/* 头部亮点 + 微光晕 */}
-      <circle cx={28} cy={3.5} r={2.3} fill="var(--state-running)" />
-      <circle cx={28} cy={3.5} r={4} fill="var(--state-running)" opacity={0.22} />
-    </g>
-  )
 }
 
 /** bloub 实测三点加载几何（球半径单位 × 21px）：x = -0.557/-0.013/+0.532，r = 0.165（峰值 ×1.25 走 CSS 动画） */
@@ -277,8 +146,7 @@ export function Ball() {
       title={sessions.length > 0 ? `Pupil · ${sessions.length} 个会话` : 'Pupil · 等待 Agent 会话接入'}
     >
       <svg className="ball" viewBox="0 0 56 56" aria-hidden="true">
-        <RingSegments views={sessions} />
-        {/* v0.4.2 球体变形态：球本身成为动画（GrokBot 原版做法）——
+        {/* v0.4.3 球体变形态：球本身成为动画（GrokBot 原版做法）——
             running=三点加载 error=感叹号 offline=睡眠弹跳点，此时隐藏球体与眼睛 */}
         {display === 'running' && <ThinkingDots />}
         {display === 'error' && <Exclaim />}

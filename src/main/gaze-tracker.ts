@@ -13,11 +13,16 @@ import { IPC } from '../shared/ipc-channels'
 const DEAD_ZONE_PX = 70
 /** 单位向量变化小于该阈值不重发（渲染端有 130ms 过渡，无需满速率） */
 const EMIT_THRESHOLD = 0.02
+/** 光标静止超过该时长 → 判定「没在动」：球失去兴趣回中自顾自张望（用户需求：别一直盯着鼠标） */
+const POINTER_IDLE_MS = 3500
 
 export class GazeTracker {
   private timer: NodeJS.Timeout | null = null
   private lastGx = Number.NaN
   private lastGy = Number.NaN
+  private lastX = Number.NaN
+  private lastY = Number.NaN
+  private lastMoveAt = 0
 
   constructor(private readonly getBallWindow: () => BrowserWindow | null) {}
 
@@ -26,6 +31,7 @@ export class GazeTracker {
     // NaN 初值保证第一次 tick 必发（renderer 拿到初始朝向）
     this.lastGx = Number.NaN
     this.lastGy = Number.NaN
+    this.lastMoveAt = 0 // 0 = 启动时视为静止：先自顾自张望，鼠标动了才跟
     this.timer = setInterval(() => this.tick(), 33)
   }
 
@@ -40,16 +46,25 @@ export class GazeTracker {
     const win = this.getBallWindow()
     if (!win || win.isDestroyed()) return
     const p = screen.getCursorScreenPoint()
-    const b = win.getBounds()
-    const dx = p.x - (b.x + b.width / 2)
-    const dy = p.y - (b.y + b.height / 2)
-    const dist = Math.hypot(dx, dy)
+    const now = Date.now()
+    if (p.x !== this.lastX || p.y !== this.lastY) {
+      this.lastX = p.x
+      this.lastY = p.y
+      this.lastMoveAt = now
+    }
 
     let gx = 0
     let gy = 0
-    if (dist > DEAD_ZONE_PX) {
-      gx = dx / dist
-      gy = dy / dist
+    // 光标静止超阈值 → 视为「没在动」：发 0,0（renderer 自动切到自主张望）
+    if (now - this.lastMoveAt < POINTER_IDLE_MS) {
+      const b = win.getBounds()
+      const dx = p.x - (b.x + b.width / 2)
+      const dy = p.y - (b.y + b.height / 2)
+      const dist = Math.hypot(dx, dy)
+      if (dist > DEAD_ZONE_PX) {
+        gx = dx / dist
+        gy = dy / dist
+      }
     }
     if (
       !Number.isNaN(this.lastGx) &&

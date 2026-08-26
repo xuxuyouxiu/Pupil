@@ -190,11 +190,14 @@ export function EyeSystem({ mode }: EyeSystemProps) {
       break
   }
 
-  // 无光标时的自动生命感：待机漂移 / 初始化急切游移（running 已改三点加载）
+  // 无光标时的自动生命感：待机张望+歪头疑惑 / 初始化急切游移（running 已改三点加载）
   let wander = ''
+  let tilt = ''
   if (!ptrActive) {
-    if (mode === 'idle') wander = 'gaze-wander'
-    else if (mode === 'initializing') wander = 'gaze-dart'
+    if (mode === 'idle') {
+      wander = 'gaze-wander'
+      tilt = 'gaze-tilt' // 歪头：缓慢左右倾头（疑惑/好奇感），与漂移同周期
+    } else if (mode === 'initializing') wander = 'gaze-dart'
   }
   // 循环眨眼节奏：waiting 频繁(催促)、idle 伪随机(7.3s 两次不均匀落点)
   let blinkLoop = ''
@@ -205,9 +208,11 @@ export function EyeSystem({ mode }: EyeSystemProps) {
     <svg className="eyes" viewBox="0 0 56 56" aria-hidden="true">
       {/* 四层嵌套各持一种变换源：注视平移(过渡) > 切换睁眼(一次性) > 循环眨眼 > 漂移(动画) */}
       <g className="eye-gaze" style={{ transform: `translate(${ox}px, ${oy}px)` }}>
-        <g key={mode} className="eye-swap">
-          <g className={blinkLoop}>
-            <g className={wander}>{content}</g>
+        <g className={tilt}>
+          <g key={mode} className="eye-swap">
+            <g className={blinkLoop}>
+              <g className={wander}>{content}</g>
+            </g>
           </g>
         </g>
       </g>
