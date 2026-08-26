@@ -71,7 +71,8 @@ function RingSegments({ views }: { views: SessionView[] }) {
   }
   if (views.length > MAX_SEGMENTS) {
     const agg = aggregateState(views)
-    if (agg === 'running' || agg === 'initializing') return <Comet delay={0} />
+    if (agg === 'running') return null // 三点加载就是加载器，不再叠加环
+    if (agg === 'initializing') return <Comet delay={0} />
     return (
       <circle
         cx={CX}
@@ -89,8 +90,11 @@ function RingSegments({ views }: { views: SessionView[] }) {
     <>
       {views.map((view, i) => {
         const state = toDisplayState(view)
-        if (state === 'running' || state === 'initializing') {
-          // 多个思考中的 agent 各自一颗彗星，相位错开
+        if (state === 'running') {
+          // running 由三点加载表达（GrokBot 原版：球即加载器），不画环段
+          return null
+        }
+        if (state === 'initializing') {
           return <Comet key={view.key} delay={-i * 0.55} />
         }
         const color = STATE_COLOR[state]
@@ -142,6 +146,51 @@ function Comet({ delay }: { delay: number }) {
       <circle cx={28} cy={3.5} r={4} fill="var(--state-running)" opacity={0.22} />
     </g>
   )
+}
+
+/** bloub 实测三点加载几何（球半径单位 × 21px）：x = -0.557/-0.013/+0.532，r = 0.165（峰值 ×1.25 走 CSS 动画） */
+const DOT_X = [-11.7, -0.3, 11.2]
+const DOT_R = 3.5
+
+/** 三点波浪脉动（GrokBot 原版 thinking 态：球缩成中间点，两侧点从球身冒出，波从左到右） */
+function ThinkingDots() {
+  return (
+    <g className="tdots-layer">
+      {[0, 1, 2].map((i) => (
+        <circle
+          key={i}
+          className={`tdot tdot-${i}`}
+          cx={28 + DOT_X[i]}
+          cy={28}
+          r={i === 1 ? DOT_R * 1.06 : DOT_R} // 中间点略大（原版是球缩成的）
+          fill="var(--state-running)"
+        />
+      ))}
+    </g>
+  )
+}
+
+/**
+ * 斜体感叹号（GrokBot 原版 alert 态）：球变成「！」滑入 + 2.5Hz 微震。
+ * bloub 测量：胶囊杆（宽 0.269、长 0.776）+ 水滴点，倾斜 17.7°，
+ * 轨迹 -0.087 → +0.732（球半径单位）1.5s ease-in-out，1.6s 处 0.4s 弹回。
+ */
+function Exclaim() {
+  return (
+    <g className="exclaim-anim">
+      <g transform={`rotate(17.7 28 28)`}>
+        {/* 杆：胶囊，中心 (28, 28-0.325×21) */}
+        <rect x={28 - 2.85} y={28 - 13.4} width={5.7} height={16.3} rx={2.85} fill="var(--state-error)" />
+        {/* 点：水滴（圆端朝杆，尖朝外）——用圆近似，视觉差异在 56px 下可忽略 */}
+        <circle cx={28 - Math.sin(0.309) * 12.2} cy={28 + Math.cos(0.309) * 12.2} r={2.5} fill="var(--state-error)" />
+      </g>
+    </g>
+  )
+}
+
+/** 睡眠弹跳小球（GrokBot 原版 sleep 态：r=0.1585，y = 0.11 ± 0.19，周期 0.6s） */
+function SleepDot() {
+  return <circle className="sleep-dot" cx={28} cy={28} r={3.3} fill="var(--state-offline)" />
 }
 
 export function Ball() {
@@ -229,7 +278,12 @@ export function Ball() {
     >
       <svg className="ball" viewBox="0 0 56 56" aria-hidden="true">
         <RingSegments views={sessions} />
-        {/* 中层：球体——v0.4.0 纯黑正圆（x.ai 实测 #0a0a0c、无高光），出错抖动/空闲微呼吸保留 */}
+        {/* v0.4.2 球体变形态：球本身成为动画（GrokBot 原版做法）——
+            running=三点加载 error=感叹号 offline=睡眠弹跳点，此时隐藏球体与眼睛 */}
+        {display === 'running' && <ThinkingDots />}
+        {display === 'error' && <Exclaim />}
+        {display === 'offline' && <SleepDot />}
+        {/* 中层：球体——纯黑正圆（x.ai 实测 #0a0a0c），变形态隐藏；出错抖动/空闲微呼吸保留 */}
         <circle
           cx={28}
           cy={28}
@@ -238,14 +292,14 @@ export function Ball() {
           className={
             display === 'done'
               ? 'ball-bounce'
-              : display === 'error'
-                ? 'ball-shake'
+              : display === 'error' || display === 'running' || display === 'offline'
+                ? 'ball-morph-hide'
                 : display === 'idle'
                   ? 'ball-breathe'
                   : ''
           }
         />
-        {/* 中心：精灵眼 */}
+        {/* 中心：精灵眼（变形态由 EyeSystem 内部返回 null） */}
         <g className="eye-layer">
           <EyeSystem mode={display} />
         </g>
