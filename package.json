@@ -48,7 +48,12 @@
     "appId": "dev.pupil.app",
     "productName": "Pupil",
     "copyright": "Copyright © 2026 Pupil Team",
-    "releaseType": "release",
+    "publish": {
+      "provider": "github",
+      "owner": "xuxuyouxiu",
+      "repo": "Pupil",
+      "releaseType": "release"
+    },
     "directories": {
       "output": "release",
       "buildResources": "resources"
