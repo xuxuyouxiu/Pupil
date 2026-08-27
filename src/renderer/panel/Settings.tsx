@@ -1,6 +1,7 @@
 /**
- * Settings —— 设置视图（面板内，MVP 并入面板，独立窗口 P1）
- * 分区：通知（勿扰/静音/音色包/音量）/ 数据接入（adapter 开关）/ Claude Code Hooks 管理
+ * Settings —— 设置视图（面板内）
+ * v0.7.0 模块化：拆成「通用 / 音效 / 接入」三组页签，替代单页长滚动；
+ * 记忆上次停留的分组（localStorage）。动画遵循 UIUX 文档克制原则（≤160ms）。
  */
 import React, { useCallback, useEffect, useState } from 'react'
 import { SettingsSnapshot, UpdateCheckResult } from '../../shared/ipc-channels'
@@ -26,6 +27,24 @@ const CUSTOM_SOUND_KINDS: { id: SoundKind; label: string }[] = [
   { id: 'offline', label: '断连' }
 ]
 
+/** 设置分组 */
+type SettingTab = 'general' | 'sound' | 'access'
+const SETTING_TABS: { id: SettingTab; label: string }[] = [
+  { id: 'general', label: '通用' },
+  { id: 'sound', label: '音效' },
+  { id: 'access', label: '接入' }
+]
+
+function loadLastTab(): SettingTab {
+  try {
+    const saved = localStorage.getItem('pupil.settingsTab') as SettingTab | null
+    if (saved && SETTING_TABS.some((t) => t.id === saved)) return saved
+  } catch {
+    /* storage 不可用时不影响 */
+  }
+  return 'general'
+}
+
 /** 更新状态说明文案 */
 function updateDesc(u: UpdateCheckResult | null): string {
   if (!u || u.status === 'disabled') return '启动后自动检查 GitHub Releases'
@@ -36,9 +55,8 @@ function updateDesc(u: UpdateCheckResult | null): string {
     case 'available':
       return `发现 v${u.latestVersion ?? ''}，可点击下载更新`
     case 'downloading':
-      return u.progress != null
-        ? `正在下载安装包… ${u.progress}%${formatSpeed(u.speedBps) ? ` · ${formatSpeed(u.speedBps)}` : ''}`
-        : '正在尝试下载源…'
+      if (u.progress == null) return '正在尝试下载源…'
+      return `正在下载安装包… ${u.progress}%${formatSpeed(u.speedBps) ? ` · ${formatSpeed(u.speedBps)}` : ''}`
     case 'downloaded':
       return '安装包已下载，请完成安装'
     case 'not-available':
@@ -75,6 +93,16 @@ export function Settings({ onBack }: Props) {
   const [updateBusy, setUpdateBusy] = useState(false)
   /** 拖动中的临时音量（未提交）；null = 显示已保存值 */
   const [localVolume, setLocalVolume] = useState<number | null>(null)
+  const [tab, setTab] = useState<SettingTab>(loadLastTab)
+
+  const selectTab = (t: SettingTab): void => {
+    setTab(t)
+    try {
+      localStorage.setItem('pupil.settingsTab', t)
+    } catch {
+      /* ignore */
+    }
+  }
 
   const reload = useCallback(async () => {
     setSnap(await window.pupil.getSettings())
@@ -196,8 +224,7 @@ export function Settings({ onBack }: Props) {
 
   return (
     <div className="panel">
-      {/* v0.3.4：独立设置窗口无边框，顶栏即拖动区（-webkit-app-region: drag）。
-          按钮设 no-drag 保持可点。修复「设置窗口卡在屏幕中心拖不动」。 */}
+      {/* v0.3.4：独立设置窗口无边框，顶栏即拖动区。按钮设 no-drag 保持可点。 */}
       <header className="panel-top" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
         <div className="settings-title">
           <button
@@ -220,239 +247,260 @@ export function Settings({ onBack }: Props) {
         </button>
       </header>
 
+      {/* 模块化导航（固定不随内容滚动） */}
+      {snap && (
+        <nav className="settings-nav" role="tablist" aria-label="设置分组">
+          {SETTING_TABS.map((t) => (
+            <button
+              key={t.id}
+              role="tab"
+              aria-selected={tab === t.id}
+              className={`settings-tab ${tab === t.id ? 'active' : ''}`}
+              onClick={() => selectTab(t.id)}
+            >
+              {t.label}
+            </button>
+          ))}
+        </nav>
+      )}
+
       <div className="panel-body settings-body">
         {!snap ? (
           <div className="settings-loading">加载中…</div>
         ) : (
-          <>
-            {/* 通知 */}
-            <section className="settings-section">
-              <h3 className="settings-heading">通知</h3>
-              <div className="setting-row">
-                <div className="setting-info">
-                  <Moon size={16} />
-                  <div>
-                    <div className="setting-name">勿扰模式</div>
-                    <div className="setting-desc">暂停所有音效与系统通知</div>
-                  </div>
-                </div>
-                <Toggle on={snap.dnd} onChange={() => void toggleDnd()} />
-              </div>
-              <div className="setting-row">
-                <div className="setting-info">
-                  <VolumeX size={16} />
-                  <div>
-                    <div className="setting-name">静音</div>
-                    <div className="setting-desc">关闭音效，保留系统通知</div>
-                  </div>
-                </div>
-                <Toggle on={snap.muted} onChange={() => void toggleMuted()} />
-              </div>
-              <div className="setting-row">
-                <div className="setting-info">
-                  <Music size={16} />
-                  <div>
-                    <div className="setting-name">提示音音色</div>
-                    <div className="setting-desc">切换时自动试听一声</div>
-                  </div>
-                </div>
-                <select
-                  className="sound-select"
-                  value={snap.soundPack}
-                  onChange={(e) => void changeSoundPack(e.target.value)}
-                >
-                  {SOUND_PACKS.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="setting-row">
-                <div className="setting-info">
-                  <Volume2 size={16} />
-                  <div>
-                    <div className="setting-name">提示音音量</div>
-                    <div className="setting-desc">拖动即时试听</div>
-                  </div>
-                </div>
-                <input
-                  type="range"
-                  className="volume-slider"
-                  min={0}
-                  max={100}
-                  value={Math.round((localVolume ?? snap.soundVolume) * 100)}
-                  onChange={(e) => previewVolume(Number(e.target.value) / 100)}
-                  onMouseUp={(e) => void commitVolume(Number((e.target as HTMLInputElement).value) / 100)}
-                  onTouchEnd={(e) => void commitVolume(Number((e.target as HTMLInputElement).value) / 100)}
-                  onKeyUp={(e) => void commitVolume(Number((e.target as HTMLInputElement).value) / 100)}
-                  aria-label="提示音音量"
-                />
-              </div>
-              <div className="setting-row">
-                <div className="setting-info">
-                  <Rocket size={16} />
-                  <div>
-                    <div className="setting-name">开机自启</div>
-                    <div className="setting-desc">
-                      {snap.autoLaunch ? '已开启，登录 Windows 后自动运行' : '登录后自动运行 Pupil'}
-                    </div>
-                  </div>
-                </div>
-                <Toggle on={snap.autoLaunch} onChange={() => void toggleAutoLaunch()} />
-              </div>
-            </section>
-
-            {/* 数据接入 */}
-            <section className="settings-section">
-              <h3 className="settings-heading">数据接入</h3>
-              {snap.adapters.map((a) => (
-                <div className="setting-row" key={a.id}>
-                  <div className="setting-info">
-                    <span className={`adapter-dot ${a.running ? 'run' : ''} ${!a.available ? 'off' : ''}`} />
-                    <div>
-                      <div className="setting-name">{a.label}</div>
-                      <div className="setting-desc">
-                        {!a.available ? '未检测到数据源' : a.running ? '运行中' : a.enabled ? '已启用' : '已关闭'}
+          <div className="settings-view" key={tab}>
+            {/* ---------- 通用 ---------- */}
+            {tab === 'general' && (
+              <>
+                <section className="settings-section">
+                  <h3 className="settings-heading">提醒模式</h3>
+                  <div className="setting-row">
+                    <div className="setting-info">
+                      <Moon size={16} />
+                      <div>
+                        <div className="setting-name">勿扰模式</div>
+                        <div className="setting-desc">暂停所有音效与系统通知</div>
                       </div>
                     </div>
+                    <Toggle on={snap.dnd} onChange={() => void toggleDnd()} />
                   </div>
-                  <Toggle
-                    on={a.enabled}
-                    disabled={!a.available || busy === a.id}
-                    onChange={() => void toggleAdapter(a.id, !a.enabled)}
-                  />
-                </div>
-              ))}
-            </section>
-
-            {/* Claude Code Hooks */}
-            <section className="settings-section">
-              <h3 className="settings-heading">Claude Code Hooks</h3>
-              <div className="setting-row">
-                <div className="setting-info">
-                  <div>
-                    <div className="setting-name">
-                      {snap.hooksInstalled ? '已安装' : '未安装'}
+                  <div className="setting-row">
+                    <div className="setting-info">
+                      <VolumeX size={16} />
+                      <div>
+                        <div className="setting-name">静音</div>
+                        <div className="setting-desc">关闭音效，保留系统通知</div>
+                      </div>
                     </div>
-                    <div className="setting-desc">
-                      写入 ~/.claude/settings.json，让 Claude Code 实时上报事件
-                    </div>
+                    <Toggle on={snap.muted} onChange={() => void toggleMuted()} />
                   </div>
-                </div>
-                <button
-                  className={`hooks-btn ${snap.hooksInstalled ? 'danger' : ''}`}
-                  disabled={busy === 'hooks'}
-                  onClick={() => void hooksAction(!snap.hooksInstalled)}
-                >
-                  {busy === 'hooks' ? '处理中…' : snap.hooksInstalled ? '卸载' : '安装'}
-                </button>
-              </div>
-            </section>
+                </section>
 
-            {/* 更新 */}
-            <section className="settings-section">
-              <h3 className="settings-heading">更新</h3>
-              <div className="setting-row">
-                <div className="setting-info">
-                  <Download size={16} />
-                  <div>
-                    <div className="setting-name">当前版本 v{snap.version}</div>
-                    <div className="setting-desc">{updateDesc(update)}</div>
+                <section className="settings-section">
+                  <h3 className="settings-heading">系统</h3>
+                  <div className="setting-row">
+                    <div className="setting-info">
+                      <Rocket size={16} />
+                      <div>
+                        <div className="setting-name">开机自启</div>
+                        <div className="setting-desc">
+                          {snap.autoLaunch ? '已开启，登录 Windows 后自动运行' : '登录后自动运行 Pupil'}
+                        </div>
+                      </div>
+                    </div>
+                    <Toggle on={snap.autoLaunch} onChange={() => void toggleAutoLaunch()} />
                   </div>
-                </div>
-                <button
-                  className="hooks-btn"
-                  disabled={updateBusy}
-                  onClick={() => void checkUpdate()}
-                >
-                  {updateBusy ? (update?.status === 'downloading' ? '下载中…' : '处理中…') : '检查更新'}
-                </button>
-              </div>
-              {update?.status === 'downloading' && (
-                <div className="update-progress">
-                  <div className="update-progress-track">
-                    <div
-                      className="update-progress-fill"
-                      style={{ width: `${update.progress ?? 2}%` }}
+                </section>
+
+                <section className="settings-section">
+                  <h3 className="settings-heading">关于与更新</h3>
+                  <div className="setting-row">
+                    <div className="setting-info">
+                      <Download size={16} />
+                      <div>
+                        <div className="setting-name">当前版本 v{snap.version}</div>
+                        <div className="setting-desc">{updateDesc(update)}</div>
+                      </div>
+                    </div>
+                    <button className="hooks-btn" disabled={updateBusy} onClick={() => void checkUpdate()}>
+                      {updateBusy ? (update?.status === 'downloading' ? '下载中…' : '处理中…') : '检查更新'}
+                    </button>
+                  </div>
+                  {update?.status === 'downloading' && (
+                    <div className="update-progress">
+                      <div className="update-progress-track">
+                        <div className="update-progress-fill" style={{ width: `${update.progress ?? 2}%` }} />
+                      </div>
+                      <span className="update-progress-text">
+                        {update.progress != null ? `已下载 ${update.progress}%${formatSpeed(update.speedBps) ? ` · ${formatSpeed(update.speedBps)}` : ''}` : '正在连接下载源…'}
+                      </span>
+                    </div>
+                  )}
+                  {update?.status === 'available' && (
+                    <div className="setting-row">
+                      <div className="setting-info">
+                        <div>
+                          <div className="setting-name">发现新版本 v{update.latestVersion}</div>
+                          <div className="setting-desc">校验通过后将自动静默安装并重启</div>
+                        </div>
+                      </div>
+                      <button className="hooks-btn" disabled={updateBusy} onClick={() => void downloadUpdate()}>
+                        下载更新
+                      </button>
+                    </div>
+                  )}
+                  {update?.status === 'available' && (
+                    <div className="setting-row">
+                      <button className="hooks-btn" onClick={() => void window.pupil.openUpdatePage()}>
+                        在 GitHub 打开发布页
+                      </button>
+                    </div>
+                  )}
+                </section>
+              </>
+            )}
+
+            {/* ---------- 音效 ---------- */}
+            {tab === 'sound' && (
+              <>
+                <section className="settings-section">
+                  <h3 className="settings-heading">提示音</h3>
+                  <div className="setting-row">
+                    <div className="setting-info">
+                      <Music size={16} />
+                      <div>
+                        <div className="setting-name">音色包</div>
+                        <div className="setting-desc">切换时自动试听一声</div>
+                      </div>
+                    </div>
+                    <select
+                      className="sound-select"
+                      value={snap.soundPack}
+                      onChange={(e) => void changeSoundPack(e.target.value)}
+                    >
+                      {SOUND_PACKS.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="setting-row">
+                    <div className="setting-info">
+                      <Volume2 size={16} />
+                      <div>
+                        <div className="setting-name">音量</div>
+                        <div className="setting-desc">拖动即时试听</div>
+                      </div>
+                    </div>
+                    <input
+                      type="range"
+                      className="volume-slider"
+                      min={0}
+                      max={100}
+                      value={Math.round((localVolume ?? snap.soundVolume) * 100)}
+                      onChange={(e) => previewVolume(Number(e.target.value) / 100)}
+                      onMouseUp={(e) => void commitVolume(Number((e.target as HTMLInputElement).value) / 100)}
+                      onTouchEnd={(e) => void commitVolume(Number((e.target as HTMLInputElement).value) / 100)}
+                      onKeyUp={(e) => void commitVolume(Number((e.target as HTMLInputElement).value) / 100)}
+                      aria-label="提示音音量"
                     />
                   </div>
-                  <span className="update-progress-text">
-                    {update.progress != null ? `已下载 ${update.progress}%` : '正在连接下载源…'}
-                  </span>
-                </div>
-              )}
-              {update?.status === 'available' && (
-                <div className="setting-row">
-                  <div className="setting-info">
-                    <div>
-                      <div className="setting-name">发现新版本 v{update.latestVersion}</div>
-                      <div className="setting-desc">下载完成后自动打开安装向导</div>
-                    </div>
-                  </div>
-                  <button className="hooks-btn" disabled={updateBusy} onClick={() => void downloadUpdate()}>
-                    下载更新
-                  </button>
-                </div>
-              )}
-              {update?.status === 'available' && (
-                <div className="setting-row">
-                  <button
-                    className="hooks-btn"
-                    onClick={() => void window.pupil.openUpdatePage()}
-                  >
-                    在 GitHub 打开发布页
-                  </button>
-                </div>
-              )}
-            </section>
+                </section>
 
-            {/* 自定义音效 */}
-            <section className="settings-section">
-              <h3 className="settings-heading">自定义结束音效</h3>
-              <p className="settings-hint">选择音频文件后，对应事件改播你的文件；未设置则用内置音色</p>
-              {CUSTOM_SOUND_KINDS.map((s) => {
-                const info = snap.customSounds?.[s.id]
-                return (
-                  <div className="setting-row" key={s.id}>
+                <section className="settings-section">
+                  <h3 className="settings-heading">自定义结束音效</h3>
+                  <p className="settings-hint">选择音频文件后，对应事件改播你的文件；未设置则用内置音色</p>
+                  {CUSTOM_SOUND_KINDS.map((s) => {
+                    const info = snap.customSounds?.[s.id]
+                    return (
+                      <div className="setting-row" key={s.id}>
+                        <div className="setting-info">
+                          <div>
+                            <div className="setting-name">{s.label}音效</div>
+                            <div className="setting-desc">{info ? info.name : '默认（内置音色）'}</div>
+                          </div>
+                        </div>
+                        <div className="custom-sound-actions">
+                          {info && (
+                            <button
+                              className="hooks-btn"
+                              disabled={busy === `sound-${s.id}`}
+                              onClick={() => void previewCustomSound(s.id)}
+                            >
+                              试听
+                            </button>
+                          )}
+                          <button
+                            className="hooks-btn"
+                            disabled={busy === `sound-${s.id}`}
+                            onClick={() => void pickCustomSound(s.id)}
+                          >
+                            {info ? '更换' : '选择'}
+                          </button>
+                          {info && (
+                            <button
+                              className="hooks-btn danger"
+                              disabled={busy === `sound-${s.id}`}
+                              onClick={() => void clearCustomSound(s.id)}
+                            >
+                              清除
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </section>
+              </>
+            )}
+
+            {/* ---------- 接入 ---------- */}
+            {tab === 'access' && (
+              <>
+                <section className="settings-section">
+                  <h3 className="settings-heading">数据源适配器</h3>
+                  {snap.adapters.map((a) => (
+                    <div className="setting-row" key={a.id}>
+                      <div className="setting-info">
+                        <span className={`adapter-dot ${a.running ? 'run' : ''} ${!a.available ? 'off' : ''}`} />
+                        <div>
+                          <div className="setting-name">{a.label}</div>
+                          <div className="setting-desc">
+                            {!a.available ? '未检测到数据源' : a.running ? '运行中' : a.enabled ? '已启用' : '已关闭'}
+                          </div>
+                        </div>
+                      </div>
+                      <Toggle
+                        on={a.enabled}
+                        disabled={!a.available || busy === a.id}
+                        onChange={() => void toggleAdapter(a.id, !a.enabled)}
+                      />
+                    </div>
+                  ))}
+                </section>
+
+                <section className="settings-section">
+                  <h3 className="settings-heading">Claude Code Hooks</h3>
+                  <div className="setting-row">
                     <div className="setting-info">
                       <div>
-                        <div className="setting-name">{s.label}音效</div>
-                        <div className="setting-desc">{info ? info.name : '默认（内置音色）'}</div>
+                        <div className="setting-name">{snap.hooksInstalled ? '已安装' : '未安装'}</div>
+                        <div className="setting-desc">写入 ~/.claude/settings.json，让 Claude Code 实时上报事件</div>
                       </div>
                     </div>
-                    <div className="custom-sound-actions">
-                      {info && (
-                        <button
-                          className="hooks-btn"
-                          disabled={busy === `sound-${s.id}`}
-                          onClick={() => void previewCustomSound(s.id)}
-                        >
-                          试听
-                        </button>
-                      )}
-                      <button
-                        className="hooks-btn"
-                        disabled={busy === `sound-${s.id}`}
-                        onClick={() => void pickCustomSound(s.id)}
-                      >
-                        {info ? '更换' : '选择'}
-                      </button>
-                      {info && (
-                        <button
-                          className="hooks-btn danger"
-                          disabled={busy === `sound-${s.id}`}
-                          onClick={() => void clearCustomSound(s.id)}
-                        >
-                          清除
-                        </button>
-                      )}
-                    </div>
+                    <button
+                      className={`hooks-btn ${snap.hooksInstalled ? 'danger' : ''}`}
+                      disabled={busy === 'hooks'}
+                      onClick={() => void hooksAction(!snap.hooksInstalled)}
+                    >
+                      {busy === 'hooks' ? '处理中…' : snap.hooksInstalled ? '卸载' : '安装'}
+                    </button>
                   </div>
-                )
-              })}
-            </section>
-          </>
+                </section>
+              </>
+            )}
+          </div>
         )}
       </div>
     </div>

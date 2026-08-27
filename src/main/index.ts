@@ -195,7 +195,12 @@ function bootstrap(): void {
         config.set('customSounds', custom)
       }
     } finally {
-      windows.resumePanelAutoHide()
+      // v0.7.0 补丁：对话框关闭后 Windows 会向面板补发一次迟到的 blur，
+      // 立即解除守卫会触发 300ms 自动收起（用户表现「选完文件面板自己关了」）。
+      // 先把焦点显式还给面板，守卫延长到缓冲期结束才解除。
+      const panel = windows.panelWindow
+      if (panel && !panel.isDestroyed()) panel.focus()
+      setTimeout(() => windows.resumePanelAutoHide(), 700)
     }
     return core.getSettingsSnapshot()
   })
