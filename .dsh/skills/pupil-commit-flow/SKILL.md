@@ -28,11 +28,13 @@ description: Pupil 项目任务完成后的提交流程——用户会在任务�
    git commit -m "feat(vX.Y.Z): 一句话描述"
    ```
    提交信息沿用仓库现有风格：`feat(vX.Y.Z): …` / `fix(vX.Y.Z): …` / `chore(vX.Y.Z): …`。
-5. **推送**：先 `git remote -v`。当前 Pupil 仓库没有 remote，只做本地 commit，**不要臆造 push**；未来配置了 remote 且用户要求发布时再 push + 打 tag。
+5. **推送**：先 `git remote -v`。Pupil 远端为 `https://github.com/xuxuyouxiu/Pupil.git`（已配置 origin，本地 push 走 Git Credential Manager 缓存，无需手动输入）。`git push origin main`；发布新版本再 `git tag vX.Y.Z && git push origin vX.Y.Z`。
+6. **发布 Release**（用户要求“安装后直接检查更新”时）：GitHub Releases 需要发布页可见；可手动在 github.com/xuxuyouxiu/Pupil/releases/new 填 tag 并上传 `release/Pupil-X.Y.Z-x64.exe`、`Pupil-X.Y.Z-portable.exe`、`-x64.exe.blockmap`、`latest.yml`，或走 API（用 `git credential fill` 取缓存 token，只留在变量里绝不打印）。
 
 ## 关键机制与坑
 
 - **版本号与 CHANGELOG 必须同 commit 落地**：历史提交（如 2eaa516 feat(v0.5.2)）都是 package.json + CHANGELOG + docs 同一提交，单独改代码不留版本会被用户认为"没走完流程"。
+- **重打包前先杀掉运行中的 Pupil**：`release/win-unpacked` 被运行中的 Pupil.exe 锁定会导致 electron-builder `Access is denied`（chrome_100_percent.pak 等）。Git Bash 里 `taskkill` 会被 MSYS 把 `/F` 换成路径，必须 `cmd //c "taskkill /F /IM Pupil.exe"`，然后再 `rm -rf release/win-unpacked` 重跑 `npm run dist`。
 - **commit 前确认无临时/探针文件**：本会话常在 G:\deepseek-harness 下写 .tmp-*.mts 探针，跑完要删；`git add -A` 前看一遍 status。
 - **无 remote 不要 push**：用户环境常见"提交了但没推送"卡在流程后半段，交付时明确说清已提交、未推送。
 - **先查 git status 再接手**：用户可能在外部工具改过代码（如 PodMuse、Pupil），不要直接 `git add -A` 覆盖未完成的工作。
