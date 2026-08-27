@@ -31,9 +31,8 @@ jobs:
       # renderer/main/preload 产物必须先构建（out/** 在 files 清单内），否则 asar 缺入口
       - run: npm run build
 
-      # 发布配置取自 package.json build 字段；repository.url 决定发布目标仓库；
-      # releaseType 覆盖 builder 默认的 draft，避免"发布后 latest 端点不更新"
+      # 发布配置取自 package.json build 字段（含 releaseType: release，直发正式版非草稿）
       - name: Build & publish to GitHub Releases
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npx electron-builder --win nsis portable --publish always -c.releaseType=release
+        run: npx electron-builder --win nsis portable --publish always
