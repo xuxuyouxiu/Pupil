@@ -123,3 +123,28 @@ describe('cdnAssetUrl（阿里云 CDN 候选源）', () => {
     )
   })
 })
+
+describe('parseLatestYml（CDN 版本探测）', () => {
+  it('解析 electron-builder 标准格式', async () => {
+    const { parseLatestYml } = await import('../src/main/update-core')
+    const yml = [
+      'version: 0.8.2',
+      'path: Pupil-0.8.2-x64.exe',
+      'sha512: abcDEF123==',
+      'releaseDate: "2026-08-27"'
+    ].join('\n')
+    expect(parseLatestYml(yml)).toEqual({ version: '0.8.2', sha512: 'abcDEF123==' })
+  })
+
+  it('带引号的版本号也能解析', async () => {
+    const { parseLatestYml } = await import('../src/main/update-core')
+    expect(parseLatestYml('version: "1.2.3"\nsha512: x==').version).toBe('1.2.3')
+  })
+
+  it('缺字段/畸形输入安全返回空对象', async () => {
+    const { parseLatestYml } = await import('../src/main/update-core')
+    expect(parseLatestYml('')).toEqual({})
+    expect(parseLatestYml('version: not-semver')).toEqual({})
+    expect(parseLatestYml('random: 1').version).toBeUndefined()
+  })
+})

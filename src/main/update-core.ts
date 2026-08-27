@@ -110,6 +110,22 @@ export function cdnAssetUrl(version: string, assetName: string): string {
   return `${OSS_CDN_BASE}/v${version}/${assetName}`
 }
 
+export interface LatestYmlInfo {
+  version?: string
+  /** electron-builder 写入的 sha512（base64），CDN 通道的完整性校验依据 */
+  sha512?: string
+}
+
+/**
+ * 解析 electron-builder 的 latest.yml（CDN 固定路径副本）。
+ * 只做宽松行级正则，不引 YAML 依赖；字段缺失安全返回空对象。
+ */
+export function parseLatestYml(text: string): LatestYmlInfo {
+  const version = text.match(/^version:\s*"?(\d+\.\d+\.\d+)"?\s*$/m)?.[1]
+  const sha512 = text.match(/^sha512:\s*(\S+)\s*$/m)?.[1]
+  return { version, sha512 }
+}
+
 /** 组合成一个 UpdateCheckResult（不包含网络请求的副作用） */
 export function buildUpdateResult(
   partial: Pick<UpdateCheckResult, 'currentVersion'> & Partial<UpdateCheckResult>

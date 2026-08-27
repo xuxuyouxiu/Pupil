@@ -26,7 +26,9 @@ import {
   downloadMirrors,
   GitHubRelease,
   isNewerVersion,
+  OSS_CDN_BASE,
   parseGitHubRelease,
+  parseLatestYml,
   splitRanges
 } from './update-core'
 
@@ -197,14 +199,20 @@ async function streamSingleWithWatchdog(
   await streamRangeIntoFile(url, fh, 0, -1, timeoutMs, wrappedTick)
 }
 
-/** 流式读取已落盘文件的 sha256 */
-function sha256File(path: string): Promise<string> {
+/** 流式读取已落盘文件的哈希：sha256(hex) 对 GitHub digest；sha512(base64) 对 latest.yml */
+function hashFile(path: string): Promise<{ sha256Hex: string; sha512B64: string }> {
   return new Promise((resolve, reject) => {
-    const hasher = createHash('sha256')
+    const h256 = createHash('sha256')
+    const h512 = createHash('sha512')
     const rs = createReadStream(path)
-    rs.on('data', (c) => hasher.update(c))
+    rs.on('data', (c) => {
+      h256.update(c)
+      h512.update(c)
+    })
     rs.on('error', reject)
-    rs.on('end', () => resolve(hasher.digest('hex')))
+    rs.on('end', () =>
+      resolve({ sha256Hex: h256.digest('hex'), sha512B64: h512.digest('base64') })
+    )
   })
 }
 
@@ -219,7 +227,7 @@ async function downloadTo(
   tmpPath: string,
   opts: { supportsRange: boolean; total: number },
   onProgress: (received: number, elapsedMs: number) => void
-): Promise<string> {
+): Promise<{ sha256Hex: string; sha512B64: string }> {
   const fh = await fsp.open(tmpPath, 'w')
   try {
     let received = 0
@@ -243,7 +251,7 @@ async function downloadTo(
     await fh.close().catch(() => undefined)
   }
 
-  return sha256File(tmpPath)
+  return hashFile(tmpPath)
 }
 
 export class Updater {
@@ -252,6 +260,8 @@ export class Updater {
   private downloading = false
   /** check() 时记录的官方 sha256（"sha256:<hex>"），安装前校验用 */
   private assetDigest: string | undefined
+  /** CDN 通道的完整性校验依据：latest.yml 内的 sha512（base64），与 GitHub digest 二选一 */
+  private assetSha512: string | undefined
   /**
    * 待静默安装的安装包路径：下载校验完成后置位，由主进程 will-quit 拉起
    * NSIS /S 静默安装（electron-builder assisted 安装器支持，runAfterFinish 默认装完自启）。
@@ -267,7 +277,10 @@ export class Updater {
     return this.result
   }
 
-  /** 检查更新。manual=true 是用户手动点击（不弹系统通知）。 */
+  /** 检查更新。manual=true 是用户手动点击（不弹系统通知）。
+   *  v0.8.2 版本探测改三级策略（与 PodMuse 官网同款）：
+   *  ① GitHub API（有代理/海外最快）② CDN 固定路径 latest.yml（国内直连可达，GitHub 挂了也能发现新版本）
+   *  ③ 全部失败才报错（附两条通道各自的原因） */
   async check(manual = false): Promise<UpdateCheckResult> {
     if (!app.isPackaged) {
       this.result = { status: 'dev', currentVersion: app.getVersion() }
@@ -275,42 +288,82 @@ export class Updater {
     }
     if (this.checking) return this.result
     this.checking = true
-    this.result = { status: 'checking', currentVersion: app.getVersion() }
+    const current = app.getVersion()
     try {
-      const res = await httpFetch(RELEASE_API, {
-        headers: {
-          'user-agent': 'pupil-updater',
-          accept: 'application/vnd.github+json'
-        },
-        signal: AbortSignal.timeout(CHECK_TIMEOUT_MS)
-      })
-      if (!res.ok) throw new Error(`GitHub API HTTP ${res.status}`)
-      const release = (await res.json()) as GitHubRelease
-      const parsed = parseGitHubRelease(release)
-      const current = app.getVersion()
+      this.result = { status: 'checking', currentVersion: current }
 
-      if (!parsed.latestVersion || !isNewerVersion(parsed.latestVersion, current)) {
-        this.result = {
-          status: 'not-available',
-          currentVersion: current,
-          latestVersion: parsed.latestVersion || undefined,
-          releaseUrl: parsed.htmlUrl
+      // ---- 通道 ①：GitHub API ----
+      let ghError = ''
+      try {
+        const res = await httpFetch(RELEASE_API, {
+          headers: {
+            'user-agent': 'pupil-updater',
+            accept: 'application/vnd.github+json'
+          },
+          signal: AbortSignal.timeout(CHECK_TIMEOUT_MS)
+        })
+        if (!res.ok) throw new Error(`GitHub API HTTP ${res.status}`)
+        const release = (await res.json()) as GitHubRelease
+        const parsed = parseGitHubRelease(release)
+        if (!parsed.latestVersion || !isNewerVersion(parsed.latestVersion, current)) {
+          this.result = {
+            status: 'not-available',
+            currentVersion: current,
+            latestVersion: parsed.latestVersion || undefined,
+            releaseUrl: parsed.htmlUrl
+          }
+          return this.result
         }
+        this.result = {
+          status: 'available',
+          currentVersion: current,
+          latestVersion: parsed.latestVersion,
+          message: parsed.message,
+          releaseUrl: parsed.htmlUrl,
+          assetUrl: parsed.asset?.browser_download_url,
+          assetName: parsed.asset?.name
+        }
+        this.assetDigest = parsed.asset?.digest
+        this.assetSha512 = undefined
+        if (!manual) this.notifyAvailable()
         return this.result
+      } catch (e) {
+        ghError = e instanceof Error ? e.message : String(e)
+        console.warn('[updater] GitHub API check failed, falling back to CDN:', ghError)
       }
 
-      this.result = {
-        status: 'available',
-        currentVersion: current,
-        latestVersion: parsed.latestVersion,
-        message: parsed.message,
-        releaseUrl: parsed.htmlUrl,
-        assetUrl: parsed.asset?.browser_download_url,
-        assetName: parsed.asset?.name
+      // ---- 通道 ②：CDN latest.yml 固定路径（无版本号也能探测，鸡生蛋破解） ----
+      try {
+        const res = await httpFetch(`${OSS_CDN_BASE}/pupil/latest.yml`, {
+          headers: { 'user-agent': 'pupil-updater' },
+          signal: AbortSignal.timeout(CHECK_TIMEOUT_MS)
+        })
+        if (!res.ok) throw new Error(`CDN HTTP ${res.status}`)
+        const info = parseLatestYml(await res.text())
+        if (!info.version || !isNewerVersion(info.version, current)) {
+          // CDN 可达且无新版本：信任该结果（GitHub 挂但没新版是最常见组合）
+          this.result = { status: 'not-available', currentVersion: current, latestVersion: info.version }
+          return this.result
+        }
+        const assetName = `Pupil-${info.version}-x64.exe`
+        this.result = {
+          status: 'available',
+          currentVersion: current,
+          latestVersion: info.version,
+          message: 'CDN 镜像通道（GitHub API 暂不可达）',
+          releaseUrl: `https://github.com/${OWNER}/${REPO}/releases/tag/v${info.version}`,
+          // 保留 GitHub 直链用于镜像链构建；实测排序会优先命中同目录的 CDN 版本
+          assetUrl: `https://github.com/${OWNER}/${REPO}/releases/download/v${info.version}/${assetName}`,
+          assetName
+        }
+        this.assetDigest = undefined
+        this.assetSha512 = info.sha512
+        if (!manual) this.notifyAvailable()
+        return this.result
+      } catch (cdnErr) {
+        const cdnError = cdnErr instanceof Error ? cdnErr.message : String(cdnErr)
+        throw new Error(`GitHub: ${ghError || '未知'}；CDN: ${cdnError}`)
       }
-      this.assetDigest = parsed.asset?.digest
-      if (!manual) this.notifyAvailable()
-      return this.result
     } catch (error) {
       this.result = {
         status: 'error',
@@ -390,7 +443,7 @@ export class Updater {
       try {
         const total = cand.supportsRange ? await headContentLength(cand.url) : 0
         const tmpPath = `${dest}.downloading`
-        const sha = await downloadTo(cand.url, tmpPath, { supportsRange: cand.supportsRange, total }, (recv, elapsed) => {
+        const hashes = await downloadTo(cand.url, tmpPath, { supportsRange: cand.supportsRange, total }, (recv, elapsed) => {
           const pct = total > 0 ? Math.min(99, Math.round((recv / total) * 100)) : undefined
           this.setResult({
             ...this.result,
@@ -399,13 +452,16 @@ export class Updater {
             speedBps: elapsed > 500 ? recv / (elapsed / 1000) : undefined
           })
         })
-        // 官方 digest 校验：镜像链路可能被篡改/损坏，直接执行安装包等于任意代码执行。
-        // 无 digest（旧 API 响应）时跳过校验但保留告警。
-        if (expectedSha256 && sha.toLowerCase() !== expectedSha256) {
-          throw new Error(`sha256 mismatch: got ${sha.slice(0, 16)}…`)
+        // 完整性校验双模式：GitHub 通道比对官方 sha256 digest；CDN 通道比对 latest.yml 的 sha512。
+        // 两者皆无（旧 API 响应）时跳过校验但保留告警——直接执行未校验安装包等于任意代码执行
+        if (expectedSha256 && hashes.sha256Hex.toLowerCase() !== expectedSha256) {
+          throw new Error(`sha256 mismatch: got ${hashes.sha256Hex.slice(0, 16)}…`)
         }
-        if (!expectedSha256) {
-          console.warn('[updater] release has no digest field — skipped integrity verification')
+        if (!expectedSha256 && this.assetSha512 && hashes.sha512B64 !== this.assetSha512) {
+          throw new Error('sha512 mismatch against CDN latest.yml')
+        }
+        if (!expectedSha256 && !this.assetSha512) {
+          console.warn('[updater] no digest available — skipped integrity verification')
         }
         // 原子落位：tmp -> dest（校验通过后才替换旧文件）
         await fsp.rename(tmpPath, dest).catch(async () => {

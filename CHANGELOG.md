@@ -2,6 +2,15 @@
 
 本文件记录 Pupil 的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.8.2] - 2026-08-27
+
+### 修复
+- **检查更新失败（未开代理时必现）**：v0.7.1 只给「下载」加了 CDN 通道，「版本检查」仍只查 `api.github.com`——直连不通 / 未开代理 / 未认证 API 每小时 60 次限流被代理共享出口撞上，任何一种都会报「检查失败」；版本探测改为三级策略（与 PodMuse 官网同款）：① GitHub API → ② CDN 固定路径 `download/pupil/latest.yml`（国内直连可达，附带 sha512 可做完整性校验）→ ③ 全部失败才报错，且错误信息带上两条通道各自的具体原因
+- **完整性校验双模式**：GitHub 通道比对官方 sha256 digest；CDN 通道比对 latest.yml 内 electron-builder 写入的 sha512（base64）——下载校验不因通道切换而降级
+
+### 新增
+- CDN 探测命中且无新版本时直接信任结果（最常见的「GitHub 挂了但其实没有新版」组合不再误报失败）
+
 ## [0.8.1] - 2026-08-27
 
 ### 修复
