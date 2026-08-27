@@ -35,7 +35,7 @@ export function formatDuration(ms: number | undefined): string {
   return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`
 }
 
-function summarize(views: SessionView[]): { label: string; count: number }[] {
+function summarize(views: SessionView[]): { state: DisplayState; label: string; count: number }[] {
   const counts = new Map<DisplayState, number>()
   for (const v of views) {
     const d = toDisplayState(v)
@@ -44,7 +44,7 @@ function summarize(views: SessionView[]): { label: string; count: number }[] {
   const order: DisplayState[] = ['running', 'waiting', 'done', 'error', 'timeout', 'offline']
   return order
     .filter((d) => (counts.get(d) ?? 0) > 0)
-    .map((d) => ({ label: STATE_LABEL[d], count: counts.get(d) ?? 0 }))
+    .map((d) => ({ state: d, label: STATE_LABEL[d], count: counts.get(d) ?? 0 }))
 }
 
 export function Panel() {
@@ -84,8 +84,8 @@ export function Panel() {
             <span className="summary-empty">无活跃会话</span>
           ) : (
             summary.map((s) => (
-              <span key={s.label} className="summary-item">
-                <i className={`dot dot-${s.label}`} />
+              <span key={s.state} className="summary-item">
+                <i className={`dot dot-${s.state}`} />
                 {s.count} {s.label}
               </span>
             ))

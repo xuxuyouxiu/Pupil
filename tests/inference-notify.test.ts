@@ -84,6 +84,30 @@ describe('InferenceEngine', () => {
     expect(changed).toHaveLength(0)
   })
 
+  it('waiting_input 超过 timeout 阈值也不打超时标记（挂机未确认 ≠ 卡死）', () => {
+    const reg = new SessionRegistry()
+    reg.apply(makeEvent('turn_started'))
+    reg.apply(makeEvent('waiting_input'))
+    const eng = new InferenceEngine(reg, {
+      timeoutThresholdMs: 10 * 60 * 1000,
+      disconnectThresholdMs: 30 * 1000
+    })
+    const changed = eng.tick(1_000_000 + 11 * 60 * 1000)
+    expect(changed).toHaveLength(0)
+  })
+
+  it('error 态静默不再叠加超时通知（报错时已提醒过，避免二次响铃）', () => {
+    const reg = new SessionRegistry()
+    reg.apply(makeEvent('turn_started'))
+    reg.apply(makeEvent('error', { payload: { errorMessage: 'boom' } }))
+    const eng = new InferenceEngine(reg, {
+      timeoutThresholdMs: 10 * 60 * 1000,
+      disconnectThresholdMs: 30 * 1000
+    })
+    const changed = eng.tick(1_000_000 + 11 * 60 * 1000)
+    expect(changed).toHaveLength(0)
+  })
+
   it('运行中静默超阈值才打 disconnected', () => {
     const reg = new SessionRegistry()
     reg.apply(makeEvent('turn_started'))

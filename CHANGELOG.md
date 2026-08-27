@@ -2,6 +2,24 @@
 
 本文件记录 Pupil 的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.5.9] - 2026-08-27
+
+### 修复
+- **等待输入被误报「超时」**：推断引擎原按 `state !== 'idle'` 判超时，把 waiting_input 也当工作态——用户挂机未确认权限弹窗 10 分钟后就收到「已超时」音效，而这恰是产品最该提醒的场景；改为仅 thinking/tool_calling 静默才判超时（与断连判定的豁免对称），error 态同理不再叠加二次响铃
+- **Codex 桌面版每个任务必误报超时**：实查本机 `state_5.sqlite` threads 表无权威状态列，活动脉冲只能发 turn_started、永远等不到完成事件；新增「静默 3 分钟视为本轮完成」启发式（远小于 10 分钟超时阈值），后续再有活动自动重新进入运行态，误判可自愈
+- **中文会话内容可能整行丢失**：日志 tail 按字节 offset 分块解码，UTF-8 多字节字符跨读取边界被截成 U+FFFD 后整行 JSON 解析失败、事件静默丢弃；新建共享 `adapters/incremental.ts` 只解码完整字节段、截断字符留待下次读取，claude-code 与 codex 两处 tail 统一换用
+- **顶栏状态汇总点全透明**：`Panel.tsx` 用中文标签拼 dot 类名（`dot-运行`）而 CSS 只定义英文类名，改为按状态 key 输出，颜色恢复
+- **面板运行时长冻结**：主进程只在状态变化时广播快照，无事件时行内 `mm:ss` 停在旧值；SessionRow 加本地秒级 ticker，仅 turn 进行中启动
+- **选自定义音效后面板凭空消失**：`showOpenDialog` 未挂父窗口，原生对话框夺焦触发面板「失焦 300ms 收起」，选完文件结果返回给已销毁窗口；现挂面板为父窗口 + 新增 `suspendPanelAutoHide/resumePanelAutoHide` 守卫，并顺手对 customSound 的 kind 参数做 SoundKind 白名单校验（堵 config 任意键注入）
+- **托盘/右键改勿扰后球体月牙不同步**：只有面板 IPC 一条路径广播 dndChanged；收敛到 `MonitoringCore.onDndChanged` 单一出口，四条改动路径（面板 IPC/设置面板/托盘菜单/球右键菜单）统一走它
+- **会话记录只增不减**：`SessionRegistry.remove()` 全仓零调用、sessions Map 随驻留时长单调膨胀；新增 `prune(now)`——session_ended 宽限 30s 清除、历史恢复条目保留 7 天淘汰，接入每秒推断 tick，清理即广播刷新面板
+- **更新安装包未经校验直接执行**：镜像链路（ghfast.top 等）投毒等于任意代码执行；流式下载时同步计算 sha256 与 GitHub release asset digest 比对，不通过删文件换源重试，另补 `downloadAndOpen` 并发防重入守卫
+- **HTTP ingest 错误回调可击穿主进程**：客户端中断连接后在已销毁响应上 writeHead 同步抛异常且无全局兜底；`json()` 加幂等守卫（headersSent/writableEnded/destroyed 检查），主进程入口加 uncaughtException/unhandledRejection 保活兜底
+- **Codex rollout 会话恢复永不生效**：整文件级 sawAssistantEnd 因历史轮次恒真，「最后 user 无回复」判定永假；改为顺序遍历的 awaitingReply 语义（与 claude-code 恢复逻辑一致）
+
+### 其他
+- `.gitignore` 增加 `.codegraph/`（codegraph 本地代码索引不入库）
+
 ## [0.5.3] - 2026-08-27
 
 ### 新增

@@ -21,10 +21,17 @@ import * as path from 'path'
 import { AgentAdapter, AdapterFactory, AdapterHealth } from '../types'
 import { AgentEvent, AgentType } from '../../shared/events'
 import { SqliteDb } from '../sqlite'
+import { readUtf8Incremental } from '../incremental'
 
 const ID = 'codex-log'
 const ACTIVE_WINDOW_MS = 10 * 60 * 1000
 const POLL_INTERVAL_MS = 5_000
+/**
+ * 桌面版 sqlite 无权威状态列（threads 表只有 updated_at_ms/tokens_used），activity 脉冲只能发
+ * turn_started、永远等不到完成事件——正常结束的任务此前全部演化成 10 分钟「超时」误报。
+ * 静默超过该阈值视为本轮已完成；之后若再有活动会重新发 turn_started，误判可自愈。
+ */
+const QUIET_COMPLETE_MS = 3 * 60 * 1000
 
 function codexDir(): string {
   return path.join(os.homedir(), '.codex')
@@ -112,7 +119,10 @@ export class CodexLogAdapter implements AgentAdapter {
 
   private emit: ((e: AgentEvent) => void) | null = null
   private pollTimer: NodeJS.Timeout | null = null
-  private seen = new Map<string, { updated: number; tokens: number }>()
+  private seen = new Map<
+    string,
+    { updated: number; tokens: number; /** 本轮已发运行脉冲且未发过完成 */ pulsing?: boolean; /** 最近一次活动变化时间 */ lastChangedAt: number }
+  >()
   /** rollout jsonl tails：文件路径 -> 状态 */
   private rollouts = new Map<string, RolloutTail>()
   private mode: 'sqlite' | 'rollout' | 'none' = 'none'
@@ -180,7 +190,7 @@ export class CodexLogAdapter implements AgentAdapter {
         const prev = this.seen.get(r.id)
 
         if (!prev) {
-          this.seen.set(r.id, { updated, tokens })
+          this.seen.set(r.id, { updated, tokens, lastChangedAt: now })
           // 仅最近活跃的线程进入监控
           if (now - updated <= ACTIVE_WINDOW_MS) {
             this.emitSessionStarted(r)
@@ -188,9 +198,9 @@ export class CodexLogAdapter implements AgentAdapter {
           continue
         }
 
-        // 活动脉冲：updated_at_ms 或 tokens 变化
+        // 活动脉冲：updated_at_ms 或 tokens 变化 -> 本轮开始（重置静默计时）
         if (updated !== prev.updated || tokens !== prev.tokens) {
-          this.seen.set(r.id, { updated, tokens })
+          this.seen.set(r.id, { updated, tokens, pulsing: true, lastChangedAt: now })
           this.emit?.({
             source: ID,
             agentType: 'codex',
@@ -199,6 +209,21 @@ export class CodexLogAdapter implements AgentAdapter {
             eventType: 'turn_started',
             timestamp: now,
             payload: { title: r.title, raw: { updated, tokens } }
+          })
+          continue
+        }
+
+        // 静默完成：发过运行脉冲的线程静默超阈值 -> 视为本轮已完成（一次性）
+        if (prev.pulsing && now - prev.lastChangedAt >= QUIET_COMPLETE_MS) {
+          this.seen.set(r.id, { ...prev, pulsing: false })
+          this.emit?.({
+            source: ID,
+            agentType: 'codex',
+            sessionId: r.id,
+            cwd: r.cwd,
+            eventType: 'turn_completed',
+            timestamp: now,
+            payload: { title: r.title, raw: { quietMs: now - prev.lastChangedAt } }
           })
         }
       }
@@ -256,8 +281,9 @@ export class CodexLogAdapter implements AgentAdapter {
         const text = fs.readFileSync(p, 'utf8')
         const lines = text.split('\n')
         let meta: { id?: string; cwd?: string } = {}
-        let sawUser = false
-        let sawAssistantEnd = false
+        /** 语义 = "最后一条 user 消息之后还没有 assistant 回复"（与 claude-code 恢复逻辑一致）：
+         *  整文件级 sawAssistantEnd 会因历史轮次的 assistant 记录恒为真，重启后永远恢复不了运行中会话 */
+        let awaitingReply = false
         for (const raw of lines) {
           if (!raw.trim()) continue
           let line: Record<string, unknown>
@@ -274,8 +300,8 @@ export class CodexLogAdapter implements AgentAdapter {
           }
           if (line.type === 'response_item') {
             const pl = (line.payload ?? {}) as Record<string, unknown>
-            if (pl.type === 'message' && pl.role === 'user') sawUser = true
-            if (pl.type === 'message' && pl.role === 'assistant') sawAssistantEnd = true
+            if (pl.type === 'message' && pl.role === 'user') awaitingReply = true
+            if (pl.type === 'message' && pl.role === 'assistant') awaitingReply = false
           }
         }
         if (!meta.id) continue
@@ -290,7 +316,7 @@ export class CodexLogAdapter implements AgentAdapter {
           payload: { raw: { filePath: p } }
         })
         // 状态恢复（running 类事件，不触发通知）：最后是 user 且无 assistant 回复 => 进行中
-        if (sawUser && !sawAssistantEnd) {
+        if (awaitingReply) {
           this.emit?.({
             source: ID,
             agentType: 'codex',
@@ -370,16 +396,9 @@ export class CodexLogAdapter implements AgentAdapter {
       state.pending = ''
     }
     if (stat.size === state.offset && !state.pending) return
-    const buf = Buffer.alloc(stat.size - state.offset)
-    const fd = fs.openSync(filePath, 'r')
-    let text = ''
-    try {
-      fs.readSync(fd, buf, 0, buf.length, state.offset)
-      text = buf.toString('utf8')
-    } finally {
-      fs.closeSync(fd)
-    }
-    state.offset = stat.size
+    // readUtf8Incremental：末尾被写了一半的多字节字符留待下次，避免 U+FFFD 污染整行 JSON
+    const { text, nextOffset } = readUtf8Incremental(filePath, state.offset)
+    state.offset = nextOffset
 
     const combined = state.pending + text
     const lines = combined.split('\n')

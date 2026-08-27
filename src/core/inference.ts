@@ -17,7 +17,7 @@ export interface InferenceOptions {
    * 运行中静默多半是"长回复生成中"而非断连，需放宽（主进程默认给到与 timeout 一致）
    */
   disconnectThresholdMsByAgent?: Partial<Record<AgentType, number>>
-  /** 不参与超时判断的状态（idle 不判定超时） */
+  /** 不参与超时判断的状态：仅运行中（thinking/tool_calling）静默才判定超时 */
   now?: () => number
 }
 
@@ -46,8 +46,13 @@ export class InferenceEngine {
       /** 本轮新翻的标记（上一轮没有、这一轮有）——只有首次翻转才通知，避免每秒重复响 */
       let kind: InferredFlag | null = null
 
-      // timeout：非 idle 状态且超阈值
-      if (view.state !== 'idle' && elapsed >= this.options.timeoutThresholdMs) {
+      // timeout：仅"运行中"（thinking/tool_calling）静默超阈值才算超时——
+      // idle（等用户下一句）、waiting_input（等用户确认权限）、done 保持窗口内的静默
+      // 都是正常等待而非卡死；此前 state !== 'idle' 会把挂机未确认的会话也报"已超时"
+      if (
+        (view.state === 'thinking' || view.state === 'tool_calling') &&
+        elapsed >= this.options.timeoutThresholdMs
+      ) {
         if (!view.flags.timeout) kind = 'timeout'
         next.timeout = true
       }

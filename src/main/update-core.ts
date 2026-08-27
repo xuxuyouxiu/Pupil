@@ -8,6 +8,8 @@ import { UpdateCheckResult, UpdateStatus } from '../shared/ipc-channels'
 export interface UpdateAsset {
   name: string
   browser_download_url: string
+  /** 官方 sha256 摘要（格式 "sha256:<hex>"；镜像下载的字节也必须与官方一致） */
+  digest?: string
 }
 
 /** GitHub Release 响应（只声明用到的字段） */

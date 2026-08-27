@@ -46,10 +46,8 @@ export class TrayManager {
       },
       {
         label: this.core.isDnd ? '关闭勿扰模式' : '开启勿扰模式',
-        click: () => {
-          this.core.toggleDnd()
-          this.refresh()
-        }
+        // onDndChanged 回调统一负责窗口同步与托盘刷新
+        click: () => this.core.toggleDnd()
       },
       { type: 'separator' },
       {

@@ -137,7 +137,9 @@ export class MonitoringCore {
       const anyDone = this.registry.snapshot().some((v) => v.state === 'done')
       const doneExpired = this.doneHoldActive && !anyDone
       this.doneHoldActive = anyDone
-      if (changed.length > 0 || doneExpired) this.broadcast()
+      // 过期会话清理（session_ended 宽限期 / 历史恢复条目保留期）
+      const pruned = this.registry.prune(Date.now())
+      if (changed.length > 0 || doneExpired || pruned > 0) this.broadcast()
     }, 1000)
   }
 
@@ -186,10 +188,17 @@ export class MonitoringCore {
     for (const fn of this.subscribers) fn(snapshot)
   }
 
+  /**
+   * DND 变化回调（装配层注入）——勿扰有四条改动路径（面板 IPC、设置面板、托盘菜单、球右键菜单），
+   * 统一从 setDnd 发出，保证球的月牙角标与面板指示不与任何一条路径失步。
+   */
+  onDndChanged: ((value: boolean) => void) | null = null
+
   setDnd(value: boolean): void {
     this.dnd = value
     this.config.set('dnd', value)
     this.broadcast() // 让球体更新月牙指示
+    this.onDndChanged?.(value)
   }
 
   toggleDnd(): boolean {

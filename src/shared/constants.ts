@@ -37,5 +37,13 @@ export const SETTINGS_HEIGHT = 520
 /** 环形内存缓冲上限（每会话保留的事件数） */
 export const EVENT_RING_BUFFER_SIZE = 1000
 
+/**
+ * 会话清理：session_ended 后展示宽限期（契约见 session-registry 注释），到期由推断 tick 清除
+ */
+export const SESSION_ENDED_RETENTION_MS = 30 * 1000
+
+/** 历史恢复条目（restoredOnly）的最大保留时长：过期整条清除，防止长期驻留内存单调膨胀 */
+export const RESTORED_RETENTION_MS = 7 * 24 * 60 * 60 * 1000
+
 /** 数据目录名（%APPDATA%/pupil） */
 export const DATA_DIR_NAME = 'pupil'

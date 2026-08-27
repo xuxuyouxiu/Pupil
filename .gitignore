@@ -9,5 +9,8 @@ resources/sounds/*.mp3
 # 运行时数据（开发时 dataDir 回退到 .config 时不应入库）
 .config/
 
+# codegraph 本地代码索引
+.codegraph/
+
 # electron-builder 产出
 release/

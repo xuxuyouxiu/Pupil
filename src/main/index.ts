@@ -18,7 +18,7 @@ import { FileHistoryStore } from './history-store'
 import { activateSessionWindow } from '../integrations/win32-window'
 import { Updater } from './updater'
 import { IPC } from '../shared/ipc-channels'
-import { sessionKey } from '../shared/events'
+import { sessionKey, SoundKind } from '../shared/events'
 
 // 轻量常驻工具：受限环境（CI/沙箱/无特权进程）下 GPU 进程易崩、Chromium 沙箱初始化失败——
 // 仅在这些环境关闭硬件加速与沙箱；普通桌面保留硬件加速（悬浮球更快出现、渲染更流畅）
@@ -38,6 +38,14 @@ const gotLock = app.requestSingleInstanceLock()
 if (!gotLock) {
   app.quit()
 } else {
+  // 常驻托盘应用的最后防线：单个异常请求/异步错误不应把悬浮球整个带崩。
+  // 只记录不上抛（进程退出会让所有会话监控静默失效，比"继续跑但缺一次事件"更糟）。
+  process.on('uncaughtException', (err) => {
+    console.error('[pupil] uncaught exception (kept alive):', err)
+  })
+  process.on('unhandledRejection', (reason) => {
+    console.error('[pupil] unhandled rejection (kept alive):', reason)
+  })
   bootstrap()
 }
 
@@ -61,6 +69,14 @@ function bootstrap(): void {
       }
     }
   })
+
+  // 勿扰统一出口（四条改动路径共用）：窗口指示同步 + 托盘菜单刷新
+  core.onDndChanged = (value) => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) win.webContents.send(IPC.dndChanged, value)
+    }
+    tray.refresh()
+  }
 
   // v0.5.0 状态播报：挂在通知执行器上——
   // 事件语义即边沿（turn_completed/waiting_input/error 天生一次性），零复读；
@@ -92,14 +108,7 @@ function bootstrap(): void {
   // ---- IPC handlers ----
   ipcMain.handle(IPC.sessionsGet, () => core.snapshot())
   ipcMain.handle(IPC.dndGet, () => core.isDnd)
-  ipcMain.handle(IPC.dndToggle, () => {
-    const next = core.toggleDnd()
-    for (const win of BrowserWindow.getAllWindows()) {
-      if (!win.isDestroyed()) win.webContents.send(IPC.dndChanged, next)
-    }
-    tray.refresh()
-    return next
-  })
+  ipcMain.handle(IPC.dndToggle, () => core.toggleDnd())
   ipcMain.handle(IPC.windowActivate, async (_e, key: string) => {
     const view = core.registry.get(key)
     if (!view) return { ok: false, reason: 'no-session' }
@@ -111,10 +120,7 @@ function bootstrap(): void {
     const menu = Menu.buildFromTemplate([
       {
         label: core.isDnd ? '关闭勿扰模式' : '开启勿扰模式',
-        click: () => {
-          core.toggleDnd()
-          tray.refresh()
-        }
+        click: () => core.toggleDnd()
       },
       { label: '设置', click: () => windows.openPanel() },
       { type: 'separator' },
@@ -164,20 +170,37 @@ function bootstrap(): void {
   })
   ipcMain.handle(IPC.hooksInstall, () => core.installHooks())
   ipcMain.handle(IPC.hooksUninstall, () => core.uninstallHooks())
+  /** SoundKind 白名单：kind 同时用作 customSounds 配置键，拒绝任意键注入 config.json */
+  const isSoundKind = (k: string): k is SoundKind =>
+    ['done', 'ended', 'waiting', 'error', 'timeout', 'offline'].includes(k)
+
   ipcMain.handle(IPC.customSoundPick, async (_e, kind: string) => {
-    const res = await dialog.showOpenDialog({
-      title: '选择自定义音效',
-      properties: ['openFile'],
-      filters: [{ name: '音频文件', extensions: ['mp3', 'wav', 'flac', 'ogg', 'm4a', 'aac', 'wma'] }]
-    })
-    if (!res.canceled && res.filePaths[0]) {
-      const custom = { ...(config.get('customSounds') ?? {}) }
-      custom[kind] = res.filePaths[0]
-      config.set('customSounds', custom)
+    if (!isSoundKind(kind)) return core.getSettingsSnapshot()
+    // 对话框以面板为父窗口 + 挂起失焦收起：原生对话框夺焦会让面板在 300ms 后销毁，
+    // 结果返回时窗口已不存在（用户表现「点了选择没反应」）
+    windows.suspendPanelAutoHide()
+    try {
+      const options = {
+        title: '选择自定义音效',
+        properties: ['openFile' as const],
+        filters: [{ name: '音频文件', extensions: ['mp3', 'wav', 'flac', 'ogg', 'm4a', 'aac', 'wma'] }]
+      }
+      const parent = windows.panelWindow
+      const res = parent
+        ? await dialog.showOpenDialog(parent, options)
+        : await dialog.showOpenDialog(options)
+      if (!res.canceled && res.filePaths[0]) {
+        const custom = { ...(config.get('customSounds') ?? {}) }
+        custom[kind] = res.filePaths[0]
+        config.set('customSounds', custom)
+      }
+    } finally {
+      windows.resumePanelAutoHide()
     }
     return core.getSettingsSnapshot()
   })
   ipcMain.handle(IPC.customSoundClear, (_e, kind: string) => {
+    if (!isSoundKind(kind)) return core.getSettingsSnapshot()
     const custom = { ...(config.get('customSounds') ?? {}) }
     delete custom[kind]
     config.set('customSounds', custom)

@@ -14,6 +14,8 @@ export class WindowManager {
   private panel: BrowserWindow | null = null
   private settingsWin: BrowserWindow | null = null
   private panelHideTimer: NodeJS.Timeout | null = null
+  /** 原生对话框打开期间的失焦自动收起挂起计数（可重入） */
+  private dialogGuardCount = 0
   /** 应用退出中（区别于用户点设置窗口关闭钮：退出要真销毁，关闭钮只隐藏复用） */
   private quitting = false
 
@@ -91,6 +93,11 @@ export class WindowManager {
 
   get ballWindow(): BrowserWindow | null {
     return this.ball
+  }
+
+  /** 面板窗口访问器（原生对话框需挂父窗口，避免夺焦收起竞态） */
+  get panelWindow(): BrowserWindow | null {
+    return this.panel && !this.panel.isDestroyed() ? this.panel : null
   }
 
   /**
@@ -187,13 +194,31 @@ export class WindowManager {
     return true
   }
 
-  /** 面板失焦后 300ms 收起；主列表与设置视图统一策略（用户要求一致，2026-08-27 收回 v0.2.0 的设置视图例外） */
+  /**
+   * 面板失焦后 300ms 收起；主列表与设置视图统一策略（用户要求一致，2026-08-27 收回 v0.2.0 的设置视图例外）。
+   * 原生对话框（选自定义音效等）打开期间挂起：对话框必然夺焦触发 blur，属预期交互而非"点外面"。
+   */
   private schedulePanelHide(): void {
+    if (this.dialogGuardCount > 0) return
     if (this.panelHideTimer) clearTimeout(this.panelHideTimer)
     this.panelHideTimer = setTimeout(() => {
       if (this.panel && !this.panel.isDestroyed()) this.panel.close()
       this.panelHideTimer = null
     }, 300)
+  }
+
+  /** 挂起面板失焦自动收起（可重入；打开原生对话框前调用） */
+  suspendPanelAutoHide(): void {
+    this.dialogGuardCount++
+    if (this.panelHideTimer) {
+      clearTimeout(this.panelHideTimer)
+      this.panelHideTimer = null
+    }
+  }
+
+  /** 解除挂起（对话框关闭后调用） */
+  resumePanelAutoHide(): void {
+    this.dialogGuardCount = Math.max(0, this.dialogGuardCount - 1)
   }
 
 

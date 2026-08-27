@@ -15,7 +15,7 @@ import {
   SessionView,
   sessionKey
 } from '../shared/events'
-import { EVENT_RING_BUFFER_SIZE, DONE_HOLD_MS_DEFAULT } from '../shared/constants'
+import { EVENT_RING_BUFFER_SIZE, DONE_HOLD_MS_DEFAULT, RESTORED_RETENTION_MS, SESSION_ENDED_RETENTION_MS } from '../shared/constants'
 
 /** 历史持久化钩子（P2-8）：由上层注入实现，core 保持零 IO */
 export interface HistoryStore {
@@ -49,6 +49,12 @@ interface SessionRecord {
 
   /** 仅来自历史恢复（P2-8）：不出现在会话列表，直到收到新事件 */
   restoredOnly?: boolean
+
+  /**
+   * session_ended 的时刻：到期由 prune() 清除会话（消除托盘常驻下的内存单调增长）。
+   * 会话复活（任何非 heartbeat 事件到达）即清除。
+   */
+  endedAt?: number
 }
 
 /** 由 cwd 推导展示名（目录名），无 cwd 时回退会话 ID 前缀 */
@@ -183,6 +189,13 @@ export class SessionRegistry {
         break
     }
 
+    // endedAt 生命周期：session_ended 记下时刻供 prune 清除；会话复活（其他事件）即撤销
+    if (event.eventType === 'session_ended') {
+      rec.endedAt = event.timestamp
+    } else if (event.eventType !== 'heartbeat') {
+      rec.endedAt = undefined
+    }
+
     // 任何新事件都清除 timeout/disconnected 叠加标记（架构文档：恢复即清除）
     if (event.eventType !== 'heartbeat') {
       rec.flags = { timeout: false, disconnected: false }
@@ -199,8 +212,29 @@ export class SessionRegistry {
     }
     this.historyDirty = true
 
-    // 会话结束后可延迟保留（MVP：session_ended 后仍展示 30s 由上层清理）
+    // session_ended 后由推断 tick 调用 prune() 延迟清除（见 SESSION_ENDED_RETENTION_MS）
     return this.toView(rec)
+  }
+
+  /**
+   * 过期会话清理（MonitoringCore 推断 tick 每秒调用）：
+   *  - session_ended 宽限期到期的会话整条移除（含环形缓冲）
+   *  - 仅来自历史恢复的条目超过保留期后清除（防托盘常驻内存单调膨胀）
+   * @returns 本次移除的会话数（>0 时上层需广播刷新面板）
+   */
+  prune(now: number): number {
+    let removed = 0
+    for (const [key, rec] of this.sessions) {
+      const endedExpired =
+        rec.endedAt !== undefined && now - rec.endedAt > SESSION_ENDED_RETENTION_MS
+      const restoredExpired =
+        rec.restoredOnly === true && now - rec.lastEventAt > RESTORED_RETENTION_MS
+      if (endedExpired || restoredExpired) {
+        this.sessions.delete(key)
+        removed++
+      }
+    }
+    return removed
   }
 
   /** 按 key 强制设置推断标记（InferenceEngine 调用） */

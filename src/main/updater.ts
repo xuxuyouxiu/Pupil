@@ -8,6 +8,7 @@
 import { app, Notification, shell } from 'electron'
 import { createWriteStream, promises as fsp } from 'node:fs'
 import { join } from 'node:path'
+import { createHash } from 'node:crypto'
 import { UpdateCheckResult } from '../shared/ipc-channels'
 import { downloadMirrors, GitHubRelease, isNewerVersion, parseGitHubRelease } from './update-core'
 
@@ -36,18 +37,22 @@ async function probeSource(url: string): Promise<{ url: string; ms: number } | n
   }
 }
 
-/** 流式写入 + 背压（磁盘慢时暂停读网络），避免 88MB 全堆内存；失败清理 .downloading */
+/**
+ * 流式写入 + 背压（磁盘慢时暂停读网络），避免 88MB 全堆内存；失败清理 .downloading。
+ * 返回所写字节的 sha256（hex）——供安装前与 GitHub 官方 digest 比对。
+ */
 async function downloadBinaryWithProgress(
   url: string,
   savePath: string,
   timeoutMs: number,
   onProgress: (pct: number) => void
-): Promise<void> {
+): Promise<string> {
   const res = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(timeoutMs) })
   if (!res.ok || !res.body) throw new Error(`download HTTP ${res.status}`)
   const total = Number(res.headers.get('content-length')) || 0
   const tmp = `${savePath}.downloading`
   const writer = createWriteStream(tmp)
+  const hasher = createHash('sha256')
   const reader = res.body.getReader()
   let downloaded = 0
   let writerError: Error | null = null
@@ -56,7 +61,7 @@ async function downloadBinaryWithProgress(
   })
 
   const writeChunk = async (chunk: Uint8Array): Promise<void> => {
-    if (writerError) throw writerError
+    hasher.update(chunk)
     if (writer.write(chunk)) return
     await new Promise<void>((resolve, reject) => {
       writer.once('drain', resolve)
@@ -88,11 +93,15 @@ async function downloadBinaryWithProgress(
   }
   await fsp.rm(savePath, { force: true }).catch(() => undefined)
   await fsp.rename(tmp, savePath)
+  return hasher.digest('hex')
 }
 
 export class Updater {
   private result: UpdateCheckResult
   private checking = false
+  private downloading = false
+  /** check() 时记录的官方 sha256（"sha256:<hex>"），安装前校验用 */
+  private assetDigest: string | undefined
 
   constructor() {
     this.result = { status: 'disabled', currentVersion: app.getVersion() }
@@ -143,6 +152,7 @@ export class Updater {
         assetUrl: parsed.asset?.browser_download_url,
         assetName: parsed.asset?.name
       }
+      this.assetDigest = parsed.asset?.digest
       if (!manual) this.notifyAvailable()
       return this.result
     } catch (error) {
@@ -162,11 +172,22 @@ export class Updater {
     if (this.result.releaseUrl) void shell.openExternal(this.result.releaseUrl)
   }
 
-  /** 下载最新安装包并打开（用户手动触发）；先并行探测最快源，再流式下到文件 */
+  /** 下载最新安装包并打开（用户手动触发）；先并行探测最快源，再流式下到文件，校验通过才执行 */
   async downloadAndOpen(): Promise<UpdateCheckResult> {
+    if (this.downloading) return this.result // 防连点重入：两条流写同一临时文件会互相覆盖
     if (this.result.status !== 'available' || !this.result.assetUrl) return this.result
-    const assetUrl = this.result.assetUrl
+    this.downloading = true
+    try {
+      return await this.doDownloadAndOpen()
+    } finally {
+      this.downloading = false
+    }
+  }
+
+  private async doDownloadAndOpen(): Promise<UpdateCheckResult> {
+    const assetUrl = this.result.assetUrl!
     const assetName = this.result.assetName ?? `Pupil-${this.result.latestVersion}.exe`
+    const expectedSha256 = this.assetDigest?.replace(/^sha256:/i, '').toLowerCase()
     const dest = join(app.getPath('temp'), assetName)
     this.setResult({ ...this.result, status: 'downloading', progress: 0 })
 
@@ -183,12 +204,21 @@ export class Updater {
 
     for (const url of ordered) {
       try {
-        await downloadBinaryWithProgress(
+        const actualSha256 = await downloadBinaryWithProgress(
           url,
           dest,
           DOWNLOAD_ATTEMPT_TIMEOUT_MS,
           (pct) => this.setResult({ ...this.result, status: 'downloading', progress: pct })
         )
+        // 官方 digest 校验：镜像链路可能被篡改/损坏，直接执行安装包等于任意代码执行。
+        // 无 digest（旧 API 响应）时跳过校验但保留告警。
+        if (expectedSha256 && actualSha256.toLowerCase() !== expectedSha256) {
+          await fsp.rm(dest, { force: true }).catch(() => undefined)
+          throw new Error(`sha256 mismatch: got ${actualSha256.slice(0, 16)}…`)
+        }
+        if (!expectedSha256) {
+          console.warn('[updater] release has no digest field — skipped integrity verification')
+        }
         this.setResult({ ...this.result, status: 'downloaded', progress: 100, assetUrl: undefined })
         // 打开安装器，用户按向导完成升级；安装后即可体验新版本
         await shell.openPath(dest)
@@ -202,7 +232,7 @@ export class Updater {
       ...this.result,
       status: 'error',
       progress: undefined,
-      error: '所有下载源均失败（可能是网络/代理问题），请手动打开发布页下载'
+      error: '所有下载源均失败或校验不通过（可能是网络/代理问题），请手动打开发布页下载'
     })
     return this.result
   }

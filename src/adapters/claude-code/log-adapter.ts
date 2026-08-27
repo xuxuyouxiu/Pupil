@@ -21,6 +21,7 @@ import * as os from 'os'
 import * as path from 'path'
 import { AgentAdapter, AdapterFactory, AdapterHealth } from '../types'
 import { AgentEvent, AgentType } from '../../shared/events'
+import { readUtf8Incremental } from '../incremental'
 
 const ID = 'claude-code-log'
 
@@ -65,20 +66,6 @@ function listJsonlFiles(root: string): string[] {
     }
   }
   return out
-}
-
-/** 从 offset 起增量读取文件，返回新增文本与最新 size */
-function readNewBytes(filePath: string, offset: number): { text: string; size: number } {
-  const size = fs.statSync(filePath).size
-  if (size <= offset) return { text: '', size }
-  const buf = Buffer.alloc(size - offset)
-  const fd = fs.openSync(filePath, 'r')
-  try {
-    fs.readSync(fd, buf, 0, buf.length, offset)
-  } finally {
-    fs.closeSync(fd)
-  }
-  return { text: buf.toString('utf8'), size }
 }
 
 /** 读取整个文件（会话发现/状态恢复用） */
@@ -323,8 +310,8 @@ export class ClaudeCodeLogAdapter implements AgentAdapter {
       state.offset = 0
       state.pending = ''
     }
-    const { text, size } = readNewBytes(filePath, state.offset)
-    state.offset = size
+    const { text, nextOffset } = readUtf8Incremental(filePath, state.offset)
+    state.offset = nextOffset
     if (!text) return
 
     const combined = state.pending + text

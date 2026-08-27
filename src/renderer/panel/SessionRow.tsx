@@ -2,7 +2,7 @@
  * SessionRow —— 单会话行（状态点 + 身份 + 当前活动 + 时长 + 悬停跳转）
  * 点击整行 -> 激活对应窗口
  */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { SessionView, toDisplayState, DisplayState } from '../../shared/events'
 import { ExternalLink } from '../shared/icons'
 import { formatDuration } from './Panel'
@@ -49,9 +49,17 @@ function activity(view: SessionView): string {
 export function SessionRow({ view }: { view: SessionView }) {
   const [hover, setHover] = useState(false)
   const [notFound, setNotFound] = useState(false)
+  /** 本地秒级心跳：主进程只在状态变化时广播，没有它运行中的时长会冻结到下一个事件 */
+  const [, tick] = useState(0)
   const state = toDisplayState(view)
   const runningMs =
     view.turnStartedAt !== undefined ? Date.now() - view.turnStartedAt : undefined
+
+  useEffect(() => {
+    if (view.turnStartedAt === undefined) return
+    const t = setInterval(() => tick((n) => n + 1), 1000)
+    return () => clearInterval(t)
+  }, [view.turnStartedAt])
 
   const jump = async (): Promise<void> => {
     const res = await window.pupil.activateWindow(view.key)

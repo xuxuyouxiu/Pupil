@@ -143,6 +143,7 @@ export class HttpIngestAdapter implements AgentAdapter {
       }
     })
     req.on('error', () => {
+      // 客户端中断/超限 destroy 后 socket 已废；json() 内部有幂等守卫，不会二次响应
       this.json(res, 400, { code: 400, data: null, message: 'bad request' })
     })
   }
@@ -206,12 +207,26 @@ export class HttpIngestAdapter implements AgentAdapter {
     this.json(res, 200, { code: 0, data: { accepted: true }, message: '' })
   }
 
+  /**
+   * 幂等安全写 JSON 响应。此前 error 回调在"已回写过 400 + req.destroy()"的连接上再次
+   * writeHead 会同步抛 ERR_HTTP_HEADERS_SENT，把整个主进程带崩——
+   * 该守卫覆盖全部路径（重复响应/已销毁/已结束），异常时销毁连接兜底。
+   */
   private json(res: http.ServerResponse, status: number, obj: unknown): void {
-    const text = JSON.stringify(obj)
-    res.writeHead(status, {
-      'Content-Type': 'application/json; charset=utf-8',
-      'Content-Length': Buffer.byteLength(text)
-    })
-    res.end(text)
+    if (res.headersSent || res.writableEnded || res.destroyed) return
+    try {
+      const text = JSON.stringify(obj)
+      res.writeHead(status, {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Content-Length': Buffer.byteLength(text)
+      })
+      res.end(text)
+    } catch {
+      try {
+        res.destroy()
+      } catch {
+        /* 已不可用 */
+      }
+    }
   }
 }
