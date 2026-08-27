@@ -1,7 +1,9 @@
 /**
  * 主进程入口 —— 仅装配，禁止业务逻辑（架构文档第 6 节）
  */
-import { app, ipcMain, BrowserWindow, Menu } from 'electron'
+import { app, ipcMain, BrowserWindow, Menu, dialog } from 'electron'
+import * as fs from 'fs'
+import { basename } from 'path'
 import { ConfigStore } from './config'
 import { MonitoringCore } from './monitoring-core'
 import { WindowManager } from './window-manager'
@@ -153,6 +155,41 @@ function bootstrap(): void {
   })
   ipcMain.handle(IPC.hooksInstall, () => core.installHooks())
   ipcMain.handle(IPC.hooksUninstall, () => core.uninstallHooks())
+  ipcMain.handle(IPC.customSoundPick, async (_e, kind: string) => {
+    const res = await dialog.showOpenDialog({
+      title: '选择自定义音效',
+      properties: ['openFile'],
+      filters: [{ name: '音频文件', extensions: ['mp3', 'wav', 'flac', 'ogg', 'm4a', 'aac', 'wma'] }]
+    })
+    if (!res.canceled && res.filePaths[0]) {
+      const custom = { ...(config.get('customSounds') ?? {}) }
+      custom[kind] = res.filePaths[0]
+      config.set('customSounds', custom)
+    }
+    return core.getSettingsSnapshot()
+  })
+  ipcMain.handle(IPC.customSoundClear, (_e, kind: string) => {
+    const custom = { ...(config.get('customSounds') ?? {}) }
+    delete custom[kind]
+    config.set('customSounds', custom)
+    return core.getSettingsSnapshot()
+  })
+  ipcMain.handle(IPC.customSoundPreview, (_e, kind: string) => {
+    const file = config.get('customSounds')?.[kind]
+    if (!file) return false
+    try {
+      const data = new Uint8Array(fs.readFileSync(file))
+      windows.ballWindow?.webContents.send(IPC.soundPlay, {
+        type: kind,
+        pack: config.get('soundPack') ?? 'chime',
+        volume: config.get('soundVolume') ?? 0.8,
+        custom: { name: basename(file), data }
+      })
+      return true
+    } catch {
+      return false
+    }
+  })
   // 独立设置窗口（P1-2）：面板内「查看接入指引」/ 设置按钮的升级入口
   ipcMain.handle(IPC.settingsWindowOpen, () => {
     windows.openSettingsWindow()

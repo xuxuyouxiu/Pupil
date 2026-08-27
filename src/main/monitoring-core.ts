@@ -65,7 +65,9 @@ export class MonitoringCore {
       // 多半是长回复生成中；断连阈值放宽到与超时一致，避免误报"连接中断"
       disconnectThresholdMsByAgent: {
         hermes: config.get('timeoutThresholdMs') ?? 10 * 60 * 1000,
-        codex: config.get('timeoutThresholdMs') ?? 10 * 60 * 1000
+        codex: config.get('timeoutThresholdMs') ?? 10 * 60 * 1000,
+        // DSH 是 HTTP 轮询源：短暂连接抖动不应把运行中会话误判为断连
+        dsh: config.get('timeoutThresholdMs') ?? 10 * 60 * 1000
       }
     })
     // v0.4.1：超时/断连标记首次翻转 → 音效+Toast（此前只变色不出声）
@@ -213,8 +215,14 @@ export class MonitoringCore {
         running: this.adapters.isRunning(id)
       })
     }
+    const customSounds: Record<string, { path: string; name: string }> = {}
+    for (const [kind, p] of Object.entries(this.config.get('customSounds') ?? {})) {
+      if (typeof p !== 'string' || !p) continue
+      customSounds[kind] = { path: p, name: p.split(/[\\/]/).pop() ?? p }
+    }
     return {
       version: this.appVersion,
+      customSounds,
       dnd: this.dnd,
       muted: this.muted,
       soundPack: this.config.get('soundPack') ?? 'chime',

@@ -6,8 +6,10 @@
  * - 点击 Toast：优先跳转对应会话窗口，找不到则回退聚焦悬浮球
  */
 import { Notification, BrowserWindow } from 'electron'
+import * as fs from 'fs'
+import { basename } from 'path'
 import { resolveStrategy } from '../core/notify-rules'
-import { AgentEvent, SessionView } from '../shared/events'
+import { AgentEvent, SessionView, SoundKind } from '../shared/events'
 import { IPC } from '../shared/ipc-channels'
 import { ConfigStore } from './config'
 
@@ -41,7 +43,8 @@ export class Notifier {
         ball.webContents.send(IPC.soundPlay, {
           type: strategy.soundType ?? 'done',
           pack: this.config?.get('soundPack') ?? 'chime',
-          volume: this.config?.get('soundVolume') ?? 0.8
+          volume: this.config?.get('soundVolume') ?? 0.8,
+          custom: this.customAudio(strategy.soundType)
         })
       }
     }
@@ -62,6 +65,19 @@ export class Notifier {
         }
       })
       n.show()
+    }
+  }
+
+  /** 读取用户自定义音效（配置存在且文件可读时返回字节；否则回退内置合成） */
+  private customAudio(type: SoundKind | null): { name: string; data: Uint8Array } | undefined {
+    if (!type || !this.config) return undefined
+    const file = this.config.get('customSounds')?.[type]
+    if (!file) return undefined
+    try {
+      const data = new Uint8Array(fs.readFileSync(file))
+      return { name: basename(file), data }
+    } catch {
+      return undefined // 文件被删除/不可读：回退内置音色
     }
   }
 

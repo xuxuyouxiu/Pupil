@@ -177,6 +177,19 @@ function FloatingHearts() {
   )
 }
 
+/** 闭眼睡眠：白色横线（离线态，z 由 OfflineZ 提供；保留黑球可见性） */
+function ClosedEye({ cx }: { cx: number }) {
+  return (
+    <path
+      d={`M ${cx - 5.3} ${EYE_CY} Q ${cx} ${EYE_CY + 1.8} ${cx + 5.3} ${EYE_CY}`}
+      fill="none"
+      stroke="var(--eye-white)"
+      strokeWidth={2.4}
+      strokeLinecap="round"
+    />
+  )
+}
+
 function OfflineZ() {
   return (
     <text
@@ -293,8 +306,14 @@ export function EyeSystem({ mode, mood = null }: EyeSystemProps) {
       )
       break
     case 'offline':
-      // 球缩点弹跳（Ball.tsx），这里只留 z
-      content = <OfflineZ />
+      // 黑球保留（Ball.tsx 加 ball-offline-dim 弱化），闭眼 + z 表达睡眠
+      content = (
+        <>
+          <ClosedEye cx={left} />
+          <ClosedEye cx={right} />
+          <OfflineZ />
+        </>
+      )
       break
     case 'idle':
     default:

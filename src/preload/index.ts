@@ -2,7 +2,7 @@
  * Preload —— 通过 contextBridge 向 renderer 暴露类型安全 API
  */
 import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron'
-import { SessionView, SessionHistoryItem } from '../shared/events'
+import { SessionView, SessionHistoryItem, SoundKind } from '../shared/events'
 import { IPC, SettingsSnapshot, UpdateCheckResult } from '../shared/ipc-channels'
 
 export interface PupilApi {
@@ -40,6 +40,10 @@ export interface PupilApi {
   setAdapterEnabled(id: string, enabled: boolean): Promise<boolean>
   installHooks(): Promise<boolean>
   uninstallHooks(): Promise<boolean>
+  /** 选择/清除/试听自定义音效（kind: SoundKind） */
+  pickCustomSound(kind: SoundKind): Promise<SettingsSnapshot>
+  clearCustomSound(kind: SoundKind): Promise<SettingsSnapshot>
+  previewCustomSound(kind: SoundKind): Promise<boolean>
   /** 事件历史页签：跨会话合并时间线（时间倒序） */
   getHistory(limit?: number): Promise<SessionHistoryItem[]>
   /** 检查更新（GitHub Releases） */
@@ -52,8 +56,8 @@ export interface PupilApi {
   openUpdatePage(): Promise<boolean>
   /** 退出应用 */
   quit(): void
-  /** 订阅音效播放指令（主进程按通知策略驱动，携带最新音色包/音量） */
-  onSoundPlay(cb: (payload: { type: string; pack?: string; volume?: number }) => void): () => void
+  /** 订阅音效播放指令（主进程按通知策略驱动，携带最新音色包/音量/自定义音效字节） */
+  onSoundPlay(cb: (payload: { type: string; pack?: string; volume?: number; custom?: { name: string; data: Uint8Array } }) => void): () => void
   /** 订阅全局光标注视方向（眼神跟随；gx/gy 为相对球心单位向量，死区内 0,0） */
   onGaze(cb: (g: { gx: number; gy: number }) => void): () => void
   /** 订阅状态播报气泡（主进程边沿检测触发；勿扰时不会收到） */
@@ -91,10 +95,13 @@ const api: PupilApi = {
   openUpdatePage: () => ipcRenderer.invoke(IPC.updateOpenPage),
   installHooks: () => ipcRenderer.invoke(IPC.hooksInstall),
   uninstallHooks: () => ipcRenderer.invoke(IPC.hooksUninstall),
+  pickCustomSound: (kind) => ipcRenderer.invoke(IPC.customSoundPick, kind),
+  clearCustomSound: (kind) => ipcRenderer.invoke(IPC.customSoundClear, kind),
+  previewCustomSound: (kind) => ipcRenderer.invoke(IPC.customSoundPreview, kind),
   getHistory: (limit) => ipcRenderer.invoke(IPC.historyGet, limit),
   quit: () => ipcRenderer.send(IPC.appQuit),
   onSoundPlay: (cb) => {
-    const listener = (_e: IpcRendererEvent, payload: { type: string; pack?: string; volume?: number }): void =>
+    const listener = (_e: IpcRendererEvent, payload: { type: string; pack?: string; volume?: number; custom?: { name: string; data: Uint8Array } }): void =>
       cb(payload)
     ipcRenderer.on(IPC.soundPlay, listener)
     return () => ipcRenderer.removeListener(IPC.soundPlay, listener)

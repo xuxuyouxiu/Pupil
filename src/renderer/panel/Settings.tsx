@@ -4,6 +4,7 @@
  */
 import React, { useCallback, useEffect, useState } from 'react'
 import { SettingsSnapshot, UpdateCheckResult } from '../../shared/ipc-channels'
+import { SoundKind } from '../../shared/events'
 import { Moon, VolumeX, ChevronRight, X, Rocket, Music, Volume2, Download } from '../shared/icons'
 import { listSoundPacks, setSoundConfig, playSound } from '../ball/sound'
 
@@ -13,6 +14,16 @@ interface Props {
 
 /** 音色包选项（与 sound.ts PACKS 一致） */
 const SOUND_PACKS = listSoundPacks()
+
+/** 可自定义音频的事件类型（对应 SoundKind） */
+const CUSTOM_SOUND_KINDS: { id: SoundKind; label: string }[] = [
+  { id: 'done', label: '完成' },
+  { id: 'ended', label: '收工' },
+  { id: 'waiting', label: '等待输入' },
+  { id: 'error', label: '出错' },
+  { id: 'timeout', label: '超时' },
+  { id: 'offline', label: '断连' }
+]
 
 /** 更新状态说明文案 */
 function updateDesc(u: UpdateCheckResult | null): string {
@@ -145,6 +156,28 @@ export function Settings({ onBack }: Props) {
     } finally {
       setUpdateBusy(false)
     }
+  }
+
+  const pickCustomSound = async (kind: SoundKind): Promise<void> => {
+    setBusy(`sound-${kind}`)
+    try {
+      setSnap(await window.pupil.pickCustomSound(kind))
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const clearCustomSound = async (kind: SoundKind): Promise<void> => {
+    setBusy(`sound-${kind}`)
+    try {
+      setSnap(await window.pupil.clearCustomSound(kind))
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const previewCustomSound = async (kind: SoundKind): Promise<void> => {
+    await window.pupil.previewCustomSound(kind)
   }
 
   const hooksAction = async (install: boolean): Promise<void> => {
@@ -369,6 +402,52 @@ export function Settings({ onBack }: Props) {
                   </button>
                 </div>
               )}
+            </section>
+
+            {/* 自定义音效 */}
+            <section className="settings-section">
+              <h3 className="settings-heading">自定义结束音效</h3>
+              <p className="settings-hint">选择音频文件后，对应事件改播你的文件；未设置则用内置音色</p>
+              {CUSTOM_SOUND_KINDS.map((s) => {
+                const info = snap.customSounds?.[s.id]
+                return (
+                  <div className="setting-row" key={s.id}>
+                    <div className="setting-info">
+                      <div>
+                        <div className="setting-name">{s.label}音效</div>
+                        <div className="setting-desc">{info ? info.name : '默认（内置音色）'}</div>
+                      </div>
+                    </div>
+                    <div className="custom-sound-actions">
+                      {info && (
+                        <button
+                          className="hooks-btn"
+                          disabled={busy === `sound-${s.id}`}
+                          onClick={() => void previewCustomSound(s.id)}
+                        >
+                          试听
+                        </button>
+                      )}
+                      <button
+                        className="hooks-btn"
+                        disabled={busy === `sound-${s.id}`}
+                        onClick={() => void pickCustomSound(s.id)}
+                      >
+                        {info ? '更换' : '选择'}
+                      </button>
+                      {info && (
+                        <button
+                          className="hooks-btn danger"
+                          disabled={busy === `sound-${s.id}`}
+                          onClick={() => void clearCustomSound(s.id)}
+                        >
+                          清除
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
             </section>
           </>
         )}

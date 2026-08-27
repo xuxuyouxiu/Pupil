@@ -10,9 +10,17 @@ export interface AdapterStatus {
 }
 
 /** 设置面板快照（settings:get 返回） */
+/** 自定义音效文件信息 */
+export interface CustomSoundInfo {
+  path: string
+  name: string
+}
+
 export interface SettingsSnapshot {
   /** 当前应用版本（package.json version，用于更新功能展示） */
   version: string
+  /** 用户自定义音效（SoundKind -> 文件）；缺省表示用内置合成音色 */
+  customSounds?: Record<string, CustomSoundInfo>
   dnd: boolean
   muted: boolean
   /** 音色包 id（chime/wood/chip/alarm） */
@@ -71,6 +79,13 @@ export const IPC = {
   updateCheck: 'pupil:update:check',
   /** renderer -> 主进程：查询当前更新状态（含下载进度） */
   updateStatus: 'pupil:update:status',
+
+  /** renderer -> 主进程：选择自定义音效文件（kind: SoundKind），返回最新设置快照 */
+  customSoundPick: 'pupil:settings:custom-sound:pick',
+  /** renderer -> 主进程：清除某类自定义音效，返回最新设置快照 */
+  customSoundClear: 'pupil:settings:custom-sound:clear',
+  /** renderer -> 主进程：试听某类自定义音效 */
+  customSoundPreview: 'pupil:settings:custom-sound:preview',
   /** renderer -> 主进程：下载并打开最新安装包 */
   updateDownload: 'pupil:update:download',
   /** renderer -> 主进程：在浏览器打开 GitHub Release 页 */

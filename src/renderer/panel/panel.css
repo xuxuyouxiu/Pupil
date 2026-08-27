@@ -568,6 +568,18 @@ body,
   opacity: 0.75;
 }
 
+/* 自定义音效设置 */
+.settings-hint {
+  margin: 0 0 8px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.custom-sound-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
 /* 更新下载进度条（设置面板） */
 .update-progress {
   margin-top: 8px;

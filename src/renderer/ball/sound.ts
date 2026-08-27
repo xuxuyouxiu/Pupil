@@ -201,8 +201,53 @@ function tone(ac: AudioContext, spec: ToneSpec): void {
   osc.stop(ac.currentTime + spec.start + spec.dur + 0.05)
 }
 
-/** 播放指定事件音（用当前音色包与音量；面板试听前先 setSoundConfig 即可） */
-export function playSound(type: SoundType): void {
+/** 自定义音频（用户设置的 mp3/wav 等）播放句柄，避免叠音 */
+let customAudio: HTMLAudioElement | null = null
+
+/** 按扩展名猜 MIME（Blob 播放用；未知默认 mp3） */
+function audioMime(name?: string): string {
+  const ext = (name ?? '').split('.').pop()?.toLowerCase()
+  switch (ext) {
+    case 'wav': return 'audio/wav'
+    case 'flac': return 'audio/flac'
+    case 'ogg': return 'audio/ogg'
+    case 'm4a': case 'aac': return 'audio/mp4'
+    case 'wma': return 'audio/x-ms-wma'
+    case 'mp3': default: return 'audio/mpeg'
+  }
+}
+
+/** 播放用户自定义音频文件（主进程读到字节后经 IPC 下发；无自定义则用内置合成） */
+export function playSound(
+  type: SoundType,
+  custom?: { name?: string; data: Uint8Array | ArrayBuffer }
+): void {
+  if (custom && custom.data) {
+    const bytes = custom.data instanceof ArrayBuffer ? new Uint8Array(custom.data) : custom.data
+    // 先停掉上一个自定义音，防止连续完成事件叠音
+    if (customAudio) {
+      try {
+        customAudio.pause()
+        customAudio.currentTime = 0
+      } catch {
+        /* 已销毁的 Audio：忽略 */
+      }
+      customAudio = null
+    }
+    const buffer = new Uint8Array(bytes).buffer as ArrayBuffer
+    const blob = new Blob([buffer], { type: audioMime(custom.name) })
+    const url = URL.createObjectURL(blob)
+    const audio = new Audio(url)
+    audio.volume = currentVolume
+    audio.onended = () => URL.revokeObjectURL(url)
+    audio.onerror = () => URL.revokeObjectURL(url)
+    customAudio = audio
+    void audio.play().catch(() => {
+      URL.revokeObjectURL(url)
+    })
+    return
+  }
+
   const ac = getCtx()
   if (!ac || currentVolume <= 0) return
   const pack = PACKS[currentPack] ?? PACKS.chime

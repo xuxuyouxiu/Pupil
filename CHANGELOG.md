@@ -8,6 +8,14 @@
 - **DSH（DeepSeek Harness）适配器**：不再解析 zstd 压缩会话日志，直接轮询 DSH Web API `POST /api/session.list`（默认 `127.0.0.1:3080`，可用 `DSH_API_BASE`/`DSH_WEB_URL` 覆盖），把宿主侧权威 `running` 状态映射为 Pupil 事件——此前 DSH/自研 Harness 跑着任务面板却显示「未检测到运行中的 Agent 会话」，根因是 Pupil 没有识别 DSH 的数据源；现在新发现运行中会话会立即变蓝（`session_started` + `turn_started`），停下变 `turn_completed`，运行中每 30s heartbeat 续期，标题经 `projections.values.title` 同步到面板，设置面板新增「DSH（Web API）」开关
 - **内置更新检查（GitHub Releases）**：设置面板新增「更新」区——显示当前版本、一键「检查更新」；打包版启动 15s 后自动检查一次，发现新版本弹系统通知；面板可下载安装包并自动打开安装向导。数据源为 `github.com/xuxuyouxiu/Pupil` 的 latest release，NSIS 安装版优先、portable 兜底；开发模式（非打包）不发起网络检查
 
+## [0.5.6] - 2026-08-27
+
+### 新增
+- **自定义结束音效**：设置面板「自定义结束音效」区，可为完成/收工/等待/出错/超时/断连六类事件分别选择本地音频文件（mp3/wav/flac/ogg/m4a/aac/wma），支持试听、更换、清除；设置后主进程把音频字节通过 IPC 下发到球窗播放，未设置回退内置合成音色
+
+### 修复
+- **离线（断连）态“灰色小点上下跳”看不清**：原离线态把黑球完全缩没、只留一个小灰点弹跳（参考 bloub sleep 态测量），浅色壁纸下几乎不可见；改为黑球保留（弱化 72% + 缓慢呼吸）+ 闭眼睡眠表情 + z，既能看清又保留“已睡/断连”语义；同时 DSH 轮询源的断连判定阈值放宽到与超时一致，避免 DSH web 短暂抖动误判“连接中断”
+
 ## [0.5.5] - 2026-08-27
 
 ### 修复

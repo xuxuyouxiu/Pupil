@@ -19,6 +19,8 @@ export interface AppConfig {
   soundPack?: string
   /** 全局音量 0..1（默认 0.8；播放峰值 = 0.35 × 音量） */
   soundVolume?: number
+  /** 用户自定义音效：SoundKind -> 音频文件绝对路径（存在则优先于内置合成） */
+  customSounds?: Record<string, string>
   /** 开机自启（默认关闭） */
   autoLaunch?: boolean
   /** 时间推断参数（毫秒） */

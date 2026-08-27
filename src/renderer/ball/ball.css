@@ -306,6 +306,14 @@ body {
   }
 }
 
+/* 离线（断连）：保留黑球可见并弱化+缓慢呼吸（v0.5.6 用户反馈原“小灰点弹跳”看不见） */
+.ball-offline-dim {
+  transform-box: fill-box;
+  transform-origin: center;
+  opacity: 0.72;
+  animation: orb-idle-breathe 4s ease-in-out infinite;
+}
+
 /* 空闲待命：球体极缓慢呼吸（活着的感觉，幅度小不干扰） */
 .ball-shell.state-idle .ball-breathe {
   transform-box: fill-box;

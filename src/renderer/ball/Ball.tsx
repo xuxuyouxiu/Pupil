@@ -81,10 +81,6 @@ function Exclaim() {
   )
 }
 
-/** 睡眠弹跳小球（GrokBot 原版 sleep 态） */
-function SleepDot() {
-  return <circle className="sleep-dot" cx={28} cy={28} r={3.3} fill="var(--state-offline)" />
-}
 
 export function Ball() {
   const sessions = useSessions()
@@ -202,11 +198,11 @@ export function Ball() {
 
   // 主进程通知策略驱动的音效播放（指令携带最新音色包/音量，球窗无需额外广播通道）
   useEffect(() => {
-    const off = window.pupil.onSoundPlay(({ type, pack, volume }) => {
+    const off = window.pupil.onSoundPlay(({ type, pack, volume, custom }) => {
       if (pack !== undefined || volume !== undefined) {
         setSoundConfig(pack ?? 'chime', volume ?? 0.8)
       }
-      playSound(type as never)
+      playSound(type as never, custom)
     })
     return off
   }, [])
@@ -287,17 +283,18 @@ export function Ball() {
                 ? 'ball-dizzy-shake'
                 : display === 'done'
                   ? 'ball-bounce'
-                  : display === 'error' || display === 'offline'
+                  : display === 'error'
                     ? 'ball-morph-hide'
-                    : display === 'idle'
-                      ? 'ball-breathe'
-                      : ''
+                    : display === 'offline'
+                      ? 'ball-offline-dim'
+                      : display === 'idle'
+                        ? 'ball-breathe'
+                        : ''
             }${pokePulse > 0 && mood !== 'dizzy' ? ' ball-poke' : ''}`}
           />
           {/* v0.4.5 变形/加载层（画在球体之后 = 黑球底板之上） */}
           {display === 'running' && <ThinkingDots />}
           {display === 'error' && <Exclaim />}
-          {display === 'offline' && <SleepDot />}
           {/* 中心：精灵眼（互动 mood 优先；变形态由 EyeSystem 内部返回 null） */}
           <g className="eye-layer">
             <EyeSystem mode={display} mood={mood} />
