@@ -9,6 +9,7 @@ import { app, Notification, shell } from 'electron'
 import { createWriteStream, promises as fsp } from 'node:fs'
 import { join } from 'node:path'
 import { createHash } from 'node:crypto'
+import { spawn } from 'node:child_process'
 import { UpdateCheckResult } from '../shared/ipc-channels'
 import { downloadMirrors, GitHubRelease, isNewerVersion, parseGitHubRelease } from './update-core'
 
@@ -102,6 +103,12 @@ export class Updater {
   private downloading = false
   /** check() 时记录的官方 sha256（"sha256:<hex>"），安装前校验用 */
   private assetDigest: string | undefined
+  /**
+   * 待静默安装的安装包路径：下载校验完成后置位，由主进程 will-quit 拉起
+   * NSIS /S 静默安装（electron-builder assisted 安装器支持，runAfterFinish 默认装完自启）。
+   * 先退出再安装的原因：旧进程存活时静默安装会命中"关闭程序"确认，/S 下无法点击导致失败。
+   */
+  private pendingInstaller: string | null = null
 
   constructor() {
     this.result = { status: 'disabled', currentVersion: app.getVersion() }
@@ -234,8 +241,17 @@ export class Updater {
           console.warn('[updater] release has no digest field — skipped integrity verification')
         }
         this.setResult({ ...this.result, status: 'downloaded', progress: 100, assetUrl: undefined })
-        // 打开安装器，用户按向导完成升级；安装后即可体验新版本
-        await shell.openPath(dest)
+        // 一键热更：不再打开安装向导，标记退出后自动静默安装并重启
+        this.pendingInstaller = dest
+        try {
+          new Notification({
+            title: 'Pupil 更新',
+            body: `v${this.result.latestVersion} 校验通过，正在退出并自动安装，稍候自动重启…`
+          }).show()
+        } catch {
+          /* 通知失败不阻断 */
+        }
+        setTimeout(() => app.quit(), 1200)
         return this.result
       } catch (error) {
         console.warn('[updater] download failed, trying next:', url, error instanceof Error ? error.message : error)
@@ -249,6 +265,23 @@ export class Updater {
       error: '所有下载源均失败或校验不通过（可能是网络/代理问题），请手动打开发布页下载'
     })
     return this.result
+  }
+
+  /**
+   * 主进程 will-quit 时调用：取走待静默安装的包路径并拉起 NSIS /S。
+   * 无待装任务返回 null。spawn 失败回退打开向导（shell.openPath）。
+   */
+  consumePendingInstaller(): string | null {
+    const path = this.pendingInstaller
+    this.pendingInstaller = null
+    if (!path) return null
+    try {
+      const child = spawn(path, ['/S'], { detached: true, stdio: 'ignore' })
+      child.unref()
+    } catch {
+      void shell.openPath(path)
+    }
+    return path
   }
 
   private setResult(next: UpdateCheckResult): void {

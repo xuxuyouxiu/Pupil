@@ -266,4 +266,9 @@ function bootstrap(): void {
     windows.destroyAll()
     tray.destroy()
   })
+
+  // 一键热更：完全退出前若存在已校验的待装包，拉起 NSIS /S 静默安装（装完自启）
+  app.on('will-quit', () => {
+    updater.consumePendingInstaller()
+  })
 }

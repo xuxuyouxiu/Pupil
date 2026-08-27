@@ -2,6 +2,12 @@
 
 本文件记录 Pupil 的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.6.1] - 2026-08-27
+
+### 新增
+- **一键热更（静默安装）**：点击「下载更新」后流程升级为——下载 → sha256 校验 → 系统通知「校验通过，正在退出并自动安装」→ 应用退出时拉起 NSIS `/S` 静默安装包（detached 子进程，runAfterFinish 默认装完自启）→ 重启即新版本，全程无需向导点下一步；spawn 失败自动回退打开安装向导。技术边界说明：主进程含原生模块无法真·热替换，重启一次不可避免
+- **CI 发版体验修复**：release 工作流补上缺失的 `npm run build` 步骤（首个标签构建因 asar 缺 `out/main/index.js` 入口失败），并加 `-c.releaseType=release` 覆盖 builder 默认草稿模式
+
 ## [0.6.0] - 2026-08-27
 
 ### 新增
