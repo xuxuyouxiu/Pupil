@@ -60,10 +60,6 @@ export function Panel() {
     return off
   }, [])
 
-  // 视图模式同步到主进程：设置视图中途失焦不自动收起面板
-  useEffect(() => {
-    window.pupil.setPanelMode(showSettings ? 'settings' : 'main')
-  }, [showSettings])
 
   const summary = useMemo(() => summarize(sessions), [sessions])
   const sorted = useMemo(

@@ -277,13 +277,8 @@ export class DshApiAdapter implements AgentAdapter {
 
 export const dshApiAdapterFactory: AdapterFactory = {
   id: ID,
-  detect: async () => {
-    try {
-      await fetchSessionList(apiBaseUrl(), 1_500)
-      return true
-    } catch {
-      return false
-    }
-  },
+  // 故意不提供 detect：Pupil 可能先于 DSH web 启动（开机自启/登录顺序），
+  // 若 detect 在启动时失败，适配器会被跳过且不再重试——这里让适配器始终注册、
+  // 每 3s 轮询，DSH web 上线后下一次 poll 即自动恢复会话检测。
   create: () => new DshApiAdapter()
 }

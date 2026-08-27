@@ -161,10 +161,6 @@ function bootstrap(): void {
   ipcMain.handle(IPC.historyGet, (_e, limit?: number) =>
     core.history(typeof limit === 'number' ? limit : undefined)
   )
-  // 面板视图模式同步（设置视图失焦不自动收起）
-  ipcMain.on(IPC.panelMode, (_e, mode: 'main' | 'settings') => {
-    windows.setPanelMode(mode)
-  })
   ipcMain.on(IPC.appQuit, () => app.quit())
 
   app.whenReady().then(() => {

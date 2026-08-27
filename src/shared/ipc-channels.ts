@@ -117,8 +117,6 @@ export const IPC = {
   settingsWindowOpen: 'pupil:settings-window:open',
   /** renderer -> 主进程：查询事件历史（环形缓冲投影，时间倒序） */
   historyGet: 'pupil:history:get',
-  /** renderer -> 主进程：同步面板视图模式（main/settings，settings 失焦不自动收起） */
-  panelMode: 'pupil:panel:mode',
   /** renderer -> 主进程：退出应用 */
   appQuit: 'pupil:app:quit'
 } as const

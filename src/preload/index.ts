@@ -48,8 +48,6 @@ export interface PupilApi {
   downloadUpdate(): Promise<UpdateCheckResult>
   /** 在浏览器打开 GitHub 发布页 */
   openUpdatePage(): Promise<boolean>
-  /** 同步面板视图模式：设置视图下主进程不因失焦自动收起面板 */
-  setPanelMode(mode: 'main' | 'settings'): void
   /** 退出应用 */
   quit(): void
   /** 订阅音效播放指令（主进程按通知策略驱动，携带最新音色包/音量） */
@@ -91,7 +89,6 @@ const api: PupilApi = {
   installHooks: () => ipcRenderer.invoke(IPC.hooksInstall),
   uninstallHooks: () => ipcRenderer.invoke(IPC.hooksUninstall),
   getHistory: (limit) => ipcRenderer.invoke(IPC.historyGet, limit),
-  setPanelMode: (mode) => ipcRenderer.send(IPC.panelMode, mode),
   quit: () => ipcRenderer.send(IPC.appQuit),
   onSoundPlay: (cb) => {
     const listener = (_e: IpcRendererEvent, payload: { type: string; pack?: string; volume?: number }): void =>

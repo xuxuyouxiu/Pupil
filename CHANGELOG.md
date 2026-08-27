@@ -8,6 +8,12 @@
 - **DSH（DeepSeek Harness）适配器**：不再解析 zstd 压缩会话日志，直接轮询 DSH Web API `POST /api/session.list`（默认 `127.0.0.1:3080`，可用 `DSH_API_BASE`/`DSH_WEB_URL` 覆盖），把宿主侧权威 `running` 状态映射为 Pupil 事件——此前 DSH/自研 Harness 跑着任务面板却显示「未检测到运行中的 Agent 会话」，根因是 Pupil 没有识别 DSH 的数据源；现在新发现运行中会话会立即变蓝（`session_started` + `turn_started`），停下变 `turn_completed`，运行中每 30s heartbeat 续期，标题经 `projections.values.title` 同步到面板，设置面板新增「DSH（Web API）」开关
 - **内置更新检查（GitHub Releases）**：设置面板新增「更新」区——显示当前版本、一键「检查更新」；打包版启动 15s 后自动检查一次，发现新版本弹系统通知；面板可下载安装包并自动打开安装向导。数据源为 `github.com/xuxuyouxiu/Pupil` 的 latest release，NSIS 安装版优先、portable 兜底；开发模式（非打包）不发起网络检查
 
+## [0.5.4] - 2026-08-27
+
+### 修复
+- **设置视图失焦不自动收起（用户反馈行为不一致）**：面板内设置视图保留了 v0.2.0 的「失焦不收起」例外，主列表点击外部 300ms 即收起、设置视图却一直挂着；已统一为两种视图都失焦 300ms 自动收起（`window-manager.ts` 移除 settings 例外与 `panelMode` 线路）。
+- **DSH 会话检测在 Pupil 先于 DSH web 启动时不生效**：dsh-api 适配器此前在启动时做一次 `detect`，失败即被跳过且不再重试（开机自启场景常见）；去掉 detect，适配器始终注册、每 3s 轮询，DSH web 上线后自动恢复会话检测
+
 ## [0.5.2] - 2026-08-26
 
 ### 变更
