@@ -2,7 +2,7 @@
  * EventHistory —— 事件历史时间线（底部页签）
  * 数据：主进程 SessionRegistry 环形缓冲投影（每会话最近 1000 条，跨会话合并倒序）
  */
-import { useCallback, useEffect, useState } from 'react'
+import { Fragment, useCallback, useEffect, useState } from 'react'
 import { SessionHistoryItem, AgentEventType } from '../../shared/events'
 import { AlertTriangle, WifiOff, Zap } from '../shared/icons'
 
@@ -48,6 +48,19 @@ function formatTime(ts: number): string {
   if (Number.isNaN(d.getTime())) return '--:--:--'
   const p = (n: number): string => String(n).padStart(2, '0')
   return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
+}
+
+/** 日期分组标签（v0.8.0）：今天 / 昨天 / M月D日（跨年带年份） */
+function dayLabel(ts: number): string {
+  const d = new Date(ts)
+  if (Number.isNaN(d.getTime())) return '未知'
+  const now = new Date()
+  const startOfDay = (x: Date): number => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime()
+  const diffDays = Math.round((startOfDay(now) - startOfDay(d)) / 86_400_000)
+  if (diffDays === 0) return '今天'
+  if (diffDays === 1) return '昨天'
+  const base = `${d.getMonth() + 1}月${d.getDate()}日`
+  return d.getFullYear() === now.getFullYear() ? base : `${d.getFullYear()}年${base}`
 }
 
 function EventIcon({ type }: { type: AgentEventType }) {
@@ -102,29 +115,35 @@ export function EventHistory() {
 
   return (
     <ul className="history-list">
-      {items.map((it, i) => (
-        <li
-          key={`${it.key}-${it.timestamp}-${i}`}
-          className="history-row history-row-clickable"
-          title={`点击跳转 ${it.title ?? it.sessionId.slice(0, 12)} 窗口`}
-          onClick={() => void jumpToSession(it.key)}
-        >
-          <span className="history-time">{formatTime(it.timestamp)}</span>
-          <EventIcon type={it.eventType} />
-          <div className="history-main">
-            <div className="history-title">
-              <span className="history-name">{it.title ?? it.sessionId.slice(0, 12)}</span>
-              <span className="agent-tag">{AGENT_LABEL[it.agentType] ?? it.agentType}</span>
-              {jumped === it.key && <span className="history-jumped">已跳转</span>}
-            </div>
-            <div className={`history-desc ${EVENT_CLASS[it.eventType]}`}>
-              {EVENT_VERB[it.eventType]}
-              {it.toolName ? ` ${it.toolName}` : ''}
-              {it.errorMessage ? ` · ${it.errorMessage}` : ''}
-            </div>
-          </div>
-        </li>
-      ))}
+      {items.map((it, i) => {
+        const label = dayLabel(it.timestamp)
+        const showDay = i === 0 || dayLabel(items[i - 1].timestamp) !== label
+        return (
+          <Fragment key={`${it.key}-${it.timestamp}-${i}`}>
+            {showDay && <li className="history-day">{label}</li>}
+            <li
+              className="history-row history-row-clickable"
+              title={`点击跳转 ${it.title ?? it.sessionId.slice(0, 12)} 窗口`}
+              onClick={() => void jumpToSession(it.key)}
+            >
+              <span className="history-time">{formatTime(it.timestamp)}</span>
+              <EventIcon type={it.eventType} />
+              <div className="history-main">
+                <div className="history-title">
+                  <span className="history-name">{it.title ?? it.sessionId.slice(0, 12)}</span>
+                  <span className="agent-tag">{AGENT_LABEL[it.agentType] ?? it.agentType}</span>
+                  {jumped === it.key && <span className="history-jumped">已跳转</span>}
+                </div>
+                <div className={`history-desc ${EVENT_CLASS[it.eventType]}`}>
+                  {EVENT_VERB[it.eventType]}
+                  {it.toolName ? ` ${it.toolName}` : ''}
+                  {it.errorMessage ? ` · ${it.errorMessage}` : ''}
+                </div>
+              </div>
+            </li>
+          </Fragment>
+        )
+      })}
     </ul>
   )
 }

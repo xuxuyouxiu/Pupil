@@ -33,6 +33,8 @@ export interface SettingsSnapshot {
   disconnectThresholdMs: number
   hooksInstalled: boolean
   adapters: AdapterStatus[]
+  /** 通知粒度开关（未提供的键按默认放行） */
+  notifyEvents?: NotifyFilter
 }
 
 /** 更新检查状态 */
@@ -67,7 +69,8 @@ export interface UpdateCheckResult {
 }
 
 /** 事件历史条目（跨会话合并，时间倒序） */
-export type { SessionHistoryItem } from './events'
+import type { SessionHistoryItem, NotifyFilter } from './events'
+export type { SessionHistoryItem, NotifyFilter }
 
 export const IPC = {
   /** 主进程 -> renderer：全量会话快照 */
@@ -114,6 +117,10 @@ export const IPC = {
 
   /** renderer -> 主进程：切换面板开合 */
   panelToggle: 'pupil:panel:toggle',
+  /** renderer -> 主进程：上报面板内容高度（px），主进程据此自适应窗口高度 */
+  panelResize: 'pupil:panel:resize',
+  /** renderer -> 主进程：写系统剪贴板（空状态复制接入命令等） */
+  clipboardWrite: 'pupil:clipboard:write',
 
   /** renderer -> 主进程：请求弹出悬浮球右键菜单 */
   ballContext: 'pupil:ball:context',

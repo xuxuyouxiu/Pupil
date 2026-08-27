@@ -2,7 +2,7 @@
  * Panel —— 详情面板（360px 宽，自悬浮球向右展开）
  * UIUX 文档第 5 节：顶栏汇总 + 会话列表（按优先级排序）+ 底部页签（会话/事件历史）
  */
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { SessionView, toDisplayState, DisplayState, DISPLAY_PRIORITY } from '../../shared/events'
 import { useSessions } from '../ball/use-sessions'
 import { SessionRow } from './SessionRow'
@@ -53,6 +53,19 @@ export function Panel() {
   const [dnd, setDnd] = useState(false)
   /** 面板内嵌设置视图（用户偏好：点设置在悬浮窗内展开，不弹独立窗口） */
   const [showSettings, setShowSettings] = useState(false)
+  const rootRef = useRef<HTMLDivElement | null>(null)
+  const [copied, setCopied] = useState(false)
+
+  // v0.8.0 高度自适应：内容变化时上报高度，主进程夹紧后调整窗口（列表少时不再拖空白）
+  useEffect(() => {
+    const el = rootRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(() => {
+      window.pupil.setPanelHeight(Math.ceil(el.getBoundingClientRect().height))
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [showSettings, tab])
 
   useEffect(() => {
     void window.pupil.getDnd().then(setDnd)
@@ -76,7 +89,7 @@ export function Panel() {
   }
 
   return (
-    <div className="panel">
+    <div className="panel" ref={rootRef}>
       {/* 顶栏 */}
       <header className={`panel-top ${dnd ? 'dnd' : ''}`}>
         <div className="summary">
@@ -117,10 +130,25 @@ export function Panel() {
           <div className="empty-state">
             <Radar size={32} strokeWidth={1.5} />
             <p className="empty-title">未检测到运行中的 Agent 会话</p>
-            <p className="empty-sub">支持监控 Claude Code、Codex、Hermes 等工具的后台会话</p>
-            <button className="empty-cta" onClick={() => void window.pupil.openSettingsWindow()}>
-              查看接入指引
-            </button>
+            <p className="empty-sub">支持监控 Claude Code、Codex、Hermes、ZCode 等工具的后台会话</p>
+            <div className="empty-actions">
+              <button className="empty-cta" onClick={() => void window.pupil.openSettingsWindow()}>
+                查看接入指引
+              </button>
+              <button
+                className="empty-cta ghost"
+                onClick={() => {
+                  const cmd = 'pupil send --event turn_started --session my-task --cwd "D:\\myproject"'
+                  void window.pupil.writeClipboard(cmd).then((ok) => {
+                    if (!ok) return
+                    setCopied(true)
+                    setTimeout(() => setCopied(false), 2000)
+                  })
+                }}
+              >
+                {copied ? '已复制 ✓' : '复制接入命令'}
+              </button>
+            </div>
           </div>
         ) : (
           <ul className="session-list">

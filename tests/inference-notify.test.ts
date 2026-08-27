@@ -4,7 +4,7 @@
 import { describe, it, expect } from 'vitest'
 import { SessionRegistry } from '../src/core/session-registry'
 import { InferenceEngine } from '../src/core/inference'
-import { resolveStrategy } from '../src/core/notify-rules'
+import { resolveStrategy, notifyAllowed } from '../src/core/notify-rules'
 import type { AgentEvent, AgentEventType } from '../src/shared/events'
 
 function makeEvent(
@@ -230,5 +230,31 @@ describe('resolveStrategy 通知规则', () => {
     const view = new SessionRegistry().apply(makeEvent('turn_started'))
     const s = resolveStrategy(makeEvent('session_ended'), view, { dnd: false, muted: false })
     expect(s.toast).toBe(false)
+  })
+})
+
+describe('notifyAllowed 通知粒度（v0.8.0）', () => {
+  it('默认放行五类可提醒事件', () => {
+    expect(notifyAllowed('turn_completed')).toBe(true)
+    expect(notifyAllowed('waiting_input')).toBe(true)
+    expect(notifyAllowed('error')).toBe(true)
+    expect(notifyAllowed('timeout')).toBe(true)
+    expect(notifyAllowed('offline')).toBe(true)
+  })
+
+  it('session_ended 默认关闭（收工音默认不响）', () => {
+    expect(notifyAllowed('session_ended')).toBe(false)
+  })
+
+  it('用户显式关闭的类别被拦截，打开的放行', () => {
+    const filter = { turn_completed: false, timeout: true }
+    expect(notifyAllowed('turn_completed', filter)).toBe(false)
+    expect(notifyAllowed('timeout', filter)).toBe(true)
+  })
+
+  it('生命周期/工具事件不经过粒度过滤（规则引擎本就不为它们发声）', () => {
+    expect(notifyAllowed('turn_started')).toBe(true)
+    expect(notifyAllowed('tool_call_started')).toBe(true)
+    expect(notifyAllowed('heartbeat')).toBe(true)
   })
 })

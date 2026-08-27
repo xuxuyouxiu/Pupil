@@ -2,7 +2,7 @@
  * Preload —— 通过 contextBridge 向 renderer 暴露类型安全 API
  */
 import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron'
-import { SessionView, SessionHistoryItem, SoundKind } from '../shared/events'
+import { SessionView, SessionHistoryItem, SoundKind, NotifyFilter } from '../shared/events'
 import { IPC, SettingsSnapshot, UpdateCheckResult } from '../shared/ipc-channels'
 
 export interface PupilApi {
@@ -36,7 +36,12 @@ export interface PupilApi {
     autoLaunch?: boolean
     soundPack?: string
     soundVolume?: number
+    notifyEvents?: NotifyFilter
   }): Promise<SettingsSnapshot>
+  /** 面板内容高度自适应：renderer 上报内容高度，主进程调整窗口高度 */
+  setPanelHeight(height: number): void
+  /** 写系统剪贴板 */
+  writeClipboard(text: string): Promise<boolean>
   setAdapterEnabled(id: string, enabled: boolean): Promise<boolean>
   installHooks(): Promise<boolean>
   uninstallHooks(): Promise<boolean>
@@ -88,6 +93,8 @@ const api: PupilApi = {
   openSettingsWindow: () => ipcRenderer.invoke(IPC.settingsWindowOpen),
   getSettings: () => ipcRenderer.invoke(IPC.settingsGet),
   setSettings: (patch) => ipcRenderer.invoke(IPC.settingsSet, patch),
+  setPanelHeight: (height) => ipcRenderer.send(IPC.panelResize, height),
+  writeClipboard: (text) => ipcRenderer.invoke(IPC.clipboardWrite, text),
   setAdapterEnabled: (id, enabled) => ipcRenderer.invoke(IPC.adapterSetEnabled, id, enabled),
   checkUpdate: () => ipcRenderer.invoke(IPC.updateCheck),
   getUpdateStatus: () => ipcRenderer.invoke(IPC.updateStatus),

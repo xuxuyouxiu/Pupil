@@ -5,6 +5,7 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import { dataDir } from '../adapters/http-ingest/auth'
+import { NotifyFilter } from '../shared/events'
 
 export interface AppConfig {
   /** 悬浮球窗口位置（屏幕坐标，v0.5.0 起为含气泡带的窗口原点） */
@@ -28,6 +29,8 @@ export interface AppConfig {
   disconnectThresholdMs?: number
   /** 用户禁用的 adapter id 列表 */
   disabledAdapters?: string[]
+  /** 通知粒度开关（v0.8.0）：按事件类别关闭音效+通知 */
+  notifyEvents?: NotifyFilter
 }
 
 const DEFAULTS: AppConfig = {

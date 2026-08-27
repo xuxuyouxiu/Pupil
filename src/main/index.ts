@@ -1,7 +1,7 @@
 /**
  * 主进程入口 —— 仅装配，禁止业务逻辑（架构文档第 6 节）
  */
-import { app, ipcMain, BrowserWindow, Menu, dialog } from 'electron'
+import { app, ipcMain, BrowserWindow, Menu, dialog, globalShortcut, clipboard } from 'electron'
 import * as fs from 'fs'
 import { basename } from 'path'
 import { pathToFileURL } from 'node:url'
@@ -18,7 +18,7 @@ import { FileHistoryStore } from './history-store'
 import { activateSessionWindow } from '../integrations/win32-window'
 import { Updater } from './updater'
 import { IPC } from '../shared/ipc-channels'
-import { sessionKey, SoundKind } from '../shared/events'
+import { sessionKey, SoundKind, NotifyFilter } from '../shared/events'
 
 // 轻量常驻工具：受限环境（CI/沙箱/无特权进程）下 GPU 进程易崩、Chromium 沙箱初始化失败——
 // 仅在这些环境关闭硬件加速与沙箱；普通桌面保留硬件加速（悬浮球更快出现、渲染更流畅）
@@ -116,6 +116,15 @@ function bootstrap(): void {
     return { ok, reason: ok ? undefined : 'window-not-found' }
   })
   ipcMain.handle(IPC.panelToggle, () => windows.togglePanel())
+  // v0.8.0 面板高度自适应：renderer 用 ResizeObserver 上报内容高度，主进程夹紧后调整窗口
+  ipcMain.on(IPC.panelResize, (_e, h: number) => {
+    if (typeof h === 'number' && Number.isFinite(h)) windows.resizePanelTo(h)
+  })
+  ipcMain.handle(IPC.clipboardWrite, (_e, text: string) => {
+    if (typeof text !== 'string' || text.length === 0 || text.length > 4096) return false
+    clipboard.writeText(text)
+    return true
+  })
   ipcMain.on(IPC.ballContext, () => {
     const menu = Menu.buildFromTemplate([
       {
@@ -145,9 +154,13 @@ function bootstrap(): void {
         autoLaunch?: boolean
         soundPack?: string
         soundVolume?: number
+        notifyEvents?: NotifyFilter
       }
     ) => {
       if (patch.dnd !== undefined) core.setDnd(patch.dnd)
+      if (patch.notifyEvents !== undefined && typeof patch.notifyEvents === 'object') {
+        core.setNotifyEvents(patch.notifyEvents)
+      }
       if (patch.muted !== undefined) core.setMuted(patch.muted)
       if (patch.autoLaunch !== undefined) autoLaunch.set(patch.autoLaunch)
       if (patch.soundPack !== undefined) config.set('soundPack', patch.soundPack)
@@ -242,6 +255,23 @@ function bootstrap(): void {
     gaze.start()
     tray.create()
     core.start()
+    // v0.8.0 全局快捷键呼出/收起面板：优先 Ctrl+Alt+Space，被占用则退而求其次
+    const togglePanelShortcut = (): void => {
+      windows.togglePanel()
+    }
+    let bound: string | null = null
+    for (const accelerator of ['Control+Alt+Space', 'Control+Alt+P']) {
+      try {
+        if (globalShortcut.register(accelerator, togglePanelShortcut)) {
+          bound = accelerator
+          break
+        }
+      } catch {
+        /* 继续尝试下一个 */
+      }
+    }
+    if (bound) console.log(`[shortcut] 面板开关快捷键: ${bound}`)
+    else console.warn('[shortcut] 全局快捷键注册失败（被其他程序占用）')
     // 启动 15s 后自动检查一次更新（dev/非打包由 Updater 内部跳过）
     setTimeout(() => void updater.check(false), 15_000)
     // 打包版：写 %LOCALAPPDATA%/Pupil/bin/pupil.cmd（pupil send 命令，无需系统 Node）
@@ -274,6 +304,7 @@ function bootstrap(): void {
 
   // 一键热更：完全退出前若存在已校验的待装包，拉起 NSIS /S 静默安装（装完自启）
   app.on('will-quit', () => {
+    globalShortcut.unregisterAll()
     updater.consumePendingInstaller()
   })
 }

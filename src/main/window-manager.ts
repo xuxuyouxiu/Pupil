@@ -39,6 +39,13 @@ export class WindowManager {
       y += BUBBLE_BAND
       this.config.set('bubbleBandMigrated', true)
     }
+    // v0.8.0 越界校正：显示器拔除/分辨率变更后存档位置可能落在屏幕外，
+    // 球永远找不回来（托盘"显示悬浮球"也救不了），恢复时夹紧到主屏工作区
+    {
+      const wa = display.workArea
+      x = Math.min(Math.max(x, wa.x), wa.x + wa.width - winW)
+      y = Math.min(Math.max(y, wa.y), wa.y + wa.height - winH)
+    }
 
     const win = new BrowserWindow({
       x,
@@ -192,6 +199,19 @@ export class WindowManager {
     }
     this.openPanel()
     return true
+  }
+
+  /**
+   * 面板高度自适应（v0.8.0）：renderer ResizeObserver 上报内容高度，
+   * 夹紧到 [240, PANEL_MAX_HEIGHT] 后调整窗口；宽度和位置保持不变。
+   */
+  resizePanelTo(contentHeight: number): void {
+    const win = this.panel
+    if (!win || win.isDestroyed()) return
+    const clamped = Math.max(240, Math.min(PANEL_MAX_HEIGHT, Math.round(contentHeight)))
+    const [width] = win.getSize()
+    if (Math.abs(win.getBounds().height - clamped) < 2) return // 抖动抑制
+    win.setSize(width, clamped)
   }
 
   /**

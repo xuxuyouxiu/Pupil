@@ -18,8 +18,8 @@ import { zcodeRolloutAdapterFactory } from '../adapters/zcode/log-adapter'
 import { HooksInstaller, buildHookCommand } from '../adapters/claude-code/hooks-installer'
 import { SessionRegistry } from '../core/session-registry'
 import { InferenceEngine } from '../core/inference'
-import { resolveStrategy } from '../core/notify-rules'
-import { AgentEvent, SessionHistoryItem, SessionView } from '../shared/events'
+import { resolveStrategy, notifyAllowed } from '../core/notify-rules'
+import { AgentEvent, NotifyFilter, NOTIFY_FILTER_DEFAULTS, SessionHistoryItem, SessionView } from '../shared/events'
 import { SettingsSnapshot, AdapterStatus } from '../shared/ipc-channels'
 import { ConfigStore } from './config'
 
@@ -49,6 +49,8 @@ export class MonitoringCore {
   private notifyExecutor: NotifyExecutor | null = null
   private inferenceTimer: NodeJS.Timeout | null = null
   private dnd = false
+  /** v0.8.0 通知粒度开关：按事件类别关闭音效+通知（视觉状态不受影响） */
+  private notifyFilter: NotifyFilter
   /** v0.5.0：上一 tick 是否存在 done 保持态（用于检测窗口到期触发回落广播） */
   private doneHoldActive = false
   private muted = false
@@ -60,6 +62,7 @@ export class MonitoringCore {
     this.httpIngest = new HttpIngestAdapter()
     this.dnd = config.get('dnd') ?? false
     this.muted = config.get('muted') ?? false
+    this.notifyFilter = config.get('notifyEvents') ?? {}
     this.inference = new InferenceEngine(this.registry, {
       timeoutThresholdMs: config.get('timeoutThresholdMs') ?? 10 * 60 * 1000,
       disconnectThresholdMs: config.get('disconnectThresholdMs') ?? 30 * 1000,
@@ -152,6 +155,8 @@ export class MonitoringCore {
   /** 推断标记首次翻转（timeout/disconnected）→ 走完整通知链（v0.4.1 补上此前缺失的声音） */
   private notifyInferredFlag(kind: 'timeout' | 'disconnected', view: SessionView): void {
     if (this.dnd || this.muted) return
+    // 通知粒度同样作用于推断出的标记
+    if (!notifyAllowed(kind === 'timeout' ? 'timeout' : 'offline', this.notifyFilter)) return
     const who = view.title || view.sessionId
     const strategy =
       kind === 'timeout'
@@ -182,7 +187,8 @@ export class MonitoringCore {
   /** 事件入口（adapter 上报） */
   private onEvent(event: AgentEvent): void {
     const view = this.registry.apply(event)
-    if (!this.dnd) {
+    // v0.8.0 通知粒度：类别被用户关闭时不发声不弹 Toast（broadcast 照常，视觉保留）
+    if (!this.dnd && notifyAllowed(event.eventType, this.notifyFilter)) {
       const strategy = resolveStrategy(event, view, { dnd: this.dnd, muted: this.muted })
       this.notifyExecutor?.(strategy, event, view)
     }
@@ -217,6 +223,12 @@ export class MonitoringCore {
     this.config.set('muted', value)
   }
 
+  /** 更新通知粒度开关并持久化 */
+  setNotifyEvents(filter: NotifyFilter): void {
+    this.notifyFilter = filter
+    this.config.set('notifyEvents', filter)
+  }
+
   /** 组装设置面板快照（含 adapter 开关状态） */
   async getSettingsSnapshot(): Promise<SettingsSnapshot> {
     const disabled = new Set(this.config.get('disabledAdapters') ?? [])
@@ -240,6 +252,7 @@ export class MonitoringCore {
       customSounds,
       dnd: this.dnd,
       muted: this.muted,
+      notifyEvents: { ...NOTIFY_FILTER_DEFAULTS, ...this.notifyFilter },
       soundPack: this.config.get('soundPack') ?? 'chime',
       soundVolume: this.config.get('soundVolume') ?? 0.8,
       autoLaunch: this.config.get('autoLaunch') ?? false,

@@ -5,7 +5,7 @@
  */
 import React, { useCallback, useEffect, useState } from 'react'
 import { SettingsSnapshot, UpdateCheckResult } from '../../shared/ipc-channels'
-import { SoundKind } from '../../shared/events'
+import { SoundKind, NotifyFilter, NOTIFY_FILTER_DEFAULTS } from '../../shared/events'
 import { Moon, VolumeX, ChevronRight, X, Rocket, Music, Volume2, Download } from '../shared/icons'
 import { listSoundPacks, setSoundConfig, playSound } from '../ball/sound'
 import { formatSpeed } from '../../shared/format'
@@ -136,6 +136,21 @@ export function Settings({ onBack }: Props) {
   const toggleAutoLaunch = async (): Promise<void> => {
     if (!snap) return
     await window.pupil.setSettings({ autoLaunch: !snap.autoLaunch })
+    void reload()
+  }
+
+  /** v0.8.0 通知粒度：按类别开关「音效+系统通知」 */
+  const NOTIFY_GRANULARITY: { key: keyof NotifyFilter; label: string; desc: string }[] = [
+    { key: 'turn_completed', label: '完成提醒', desc: '任务完成时的音效与通知' },
+    { key: 'waiting_input', label: '等待输入提醒', desc: '需要你确认权限时' },
+    { key: 'error', label: '出错提醒', desc: '任务报错时' },
+    { key: 'timeout', label: '超时提醒', desc: '运行中长时间无活动' },
+    { key: 'offline', label: '断连提醒', desc: '会话进程中断时' }
+  ]
+  const toggleNotifyEvent = async (key: keyof NotifyFilter): Promise<void> => {
+    if (!snap) return
+    const current = { ...NOTIFY_FILTER_DEFAULTS, ...snap.notifyEvents }
+    await window.pupil.setSettings({ notifyEvents: { ...current, [key]: !current[key] } })
     void reload()
   }
 
@@ -310,6 +325,25 @@ export function Settings({ onBack }: Props) {
                     </div>
                     <Toggle on={snap.autoLaunch} onChange={() => void toggleAutoLaunch()} />
                   </div>
+                </section>
+
+                <section className="settings-section">
+                  <h3 className="settings-heading">通知粒度</h3>
+                  <p className="settings-hint">关闭的类别不再播放音效或弹通知（悬浮球状态显示不受影响）</p>
+                  {NOTIFY_GRANULARITY.map((g) => {
+                    const current = { ...NOTIFY_FILTER_DEFAULTS, ...snap.notifyEvents }
+                    return (
+                      <div className="setting-row" key={g.key}>
+                        <div className="setting-info">
+                          <div>
+                            <div className="setting-name">{g.label}</div>
+                            <div className="setting-desc">{g.desc}</div>
+                          </div>
+                        </div>
+                        <Toggle on={current[g.key] !== false} onChange={() => void toggleNotifyEvent(g.key)} />
+                      </div>
+                    )
+                  })}
                 </section>
 
                 <section className="settings-section">

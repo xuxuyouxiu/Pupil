@@ -3,7 +3,16 @@
  * 对应 UIUX 文档第 4 节"声音与系统通知映射"表。
  * 纯规则，不依赖 electron；主进程拿到策略后执行具体动作（播放音效/发 Toast）。
  */
-import { AgentEvent, DisplayState, SoundKind, toDisplayState, SessionView } from '../shared/events'
+import {
+  AgentEvent,
+  AgentEventType,
+  DisplayState,
+  NotifyFilter,
+  NOTIFY_FILTER_DEFAULTS,
+  SoundKind,
+  toDisplayState,
+  SessionView
+} from '../shared/events'
 
 /** 提醒策略 */
 export interface NotifyStrategy {
@@ -123,4 +132,18 @@ export function resolveStrategy(
   }
 
   return strategy
+}
+
+/**
+ * 通知粒度过滤（v0.8.0）：用户按类别关闭提醒。
+ * 入参同时接受事件类型与推断标记类别（timeout/offline 并非 AgentEventType 成员）；
+ * 可提醒类别外的生命周期/工具事件直接放行（它们本就 sound=false，交给规则引擎处理）。
+ */
+export function notifyAllowed(
+  eventType: AgentEventType | keyof NotifyFilter,
+  filter?: NotifyFilter
+): boolean {
+  if (!(eventType in NOTIFY_FILTER_DEFAULTS)) return true
+  const merged = { ...NOTIFY_FILTER_DEFAULTS, ...filter }
+  return merged[eventType as keyof NotifyFilter] !== false
 }

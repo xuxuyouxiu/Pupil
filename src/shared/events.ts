@@ -90,6 +90,29 @@ export type DisplayState =
 /** 提示音类型（与展示态解耦：session_ended 有专属「收工」音，其余与展示态同名） */
 export type SoundKind = 'done' | 'waiting' | 'error' | 'timeout' | 'offline' | 'ended'
 
+/**
+ * 通知粒度开关（v0.8.0）：按事件类别关闭「音效 + 系统通知」，视觉状态永远保留。
+ * 未提供的键按 NOTIFY_FILTER_DEFAULTS 放行。
+ */
+export interface NotifyFilter {
+  turn_completed?: boolean
+  waiting_input?: boolean
+  error?: boolean
+  timeout?: boolean
+  offline?: boolean
+  /** 收工音默认关（避免噪音），历史行为保持 */
+  session_ended?: boolean
+}
+
+export const NOTIFY_FILTER_DEFAULTS: Required<NotifyFilter> = {
+  turn_completed: true,
+  waiting_input: true,
+  error: true,
+  timeout: true,
+  offline: true,
+  session_ended: false
+}
+
 /** 状态优先级：高 → 低（error > timeout > offline > waiting > running > done > idle） */
 export const DISPLAY_PRIORITY: Record<DisplayState, number> = {
   error: 7,
