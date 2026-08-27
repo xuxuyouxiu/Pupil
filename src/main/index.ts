@@ -4,6 +4,7 @@
 import { app, ipcMain, BrowserWindow, Menu, dialog } from 'electron'
 import * as fs from 'fs'
 import { basename } from 'path'
+import { pathToFileURL } from 'node:url'
 import { ConfigStore } from './config'
 import { MonitoringCore } from './monitoring-core'
 import { WindowManager } from './window-manager'
@@ -184,14 +185,13 @@ function bootstrap(): void {
   })
   ipcMain.handle(IPC.customSoundPreview, (_e, kind: string) => {
     const file = config.get('customSounds')?.[kind]
-    if (!file) return false
+    if (!file || !fs.existsSync(file)) return false
     try {
-      const data = new Uint8Array(fs.readFileSync(file))
       windows.ballWindow?.webContents.send(IPC.soundPlay, {
         type: kind,
         pack: config.get('soundPack') ?? 'chime',
         volume: config.get('soundVolume') ?? 0.8,
-        custom: { name: basename(file), data }
+        custom: { name: basename(file), url: pathToFileURL(file).toString() }
       })
       return true
     } catch {

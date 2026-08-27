@@ -217,13 +217,12 @@ function audioMime(name?: string): string {
   }
 }
 
-/** 播放用户自定义音频文件（主进程读到字节后经 IPC 下发；无自定义则用内置合成） */
+/** 播放用户自定义音频文件（主进程把 file:// URL 经 IPC 下发；无自定义则用内置合成） */
 export function playSound(
   type: SoundType,
-  custom?: { name?: string; data: Uint8Array | ArrayBuffer }
+  custom?: { name?: string; url?: string; data?: Uint8Array | ArrayBuffer }
 ): void {
-  if (custom && custom.data) {
-    const bytes = custom.data instanceof ArrayBuffer ? new Uint8Array(custom.data) : custom.data
+  if (custom && (custom.url || custom.data)) {
     // 先停掉上一个自定义音，防止连续完成事件叠音
     if (customAudio) {
       try {
@@ -234,16 +233,28 @@ export function playSound(
       }
       customAudio = null
     }
-    const buffer = new Uint8Array(bytes).buffer as ArrayBuffer
-    const blob = new Blob([buffer], { type: audioMime(custom.name) })
-    const url = URL.createObjectURL(blob)
+    // 优先 file:// 直载（已验证安全可播放）；data 字节仅作兜底（临时 Blob）
+    let url = custom.url ?? ''
+    let revoke = false
+    if (!url && custom.data) {
+      const bytes = custom.data instanceof ArrayBuffer ? new Uint8Array(custom.data) : custom.data
+      const buffer = new Uint8Array(bytes).buffer as ArrayBuffer
+      const blob = new Blob([buffer], { type: audioMime(custom.name) })
+      url = URL.createObjectURL(blob)
+      revoke = true
+    }
+    if (!url) return
     const audio = new Audio(url)
     audio.volume = currentVolume
-    audio.onended = () => URL.revokeObjectURL(url)
-    audio.onerror = () => URL.revokeObjectURL(url)
+    const cleanup = (): void => {
+      if (revoke) URL.revokeObjectURL(url)
+    }
+    audio.onended = cleanup
+    audio.onerror = cleanup
     customAudio = audio
-    void audio.play().catch(() => {
-      URL.revokeObjectURL(url)
+    void audio.play().catch((e) => {
+      console.warn('[sound] custom audio play failed:', e)
+      cleanup()
     })
     return
   }

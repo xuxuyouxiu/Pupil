@@ -8,6 +8,7 @@
 import { Notification, BrowserWindow } from 'electron'
 import * as fs from 'fs'
 import { basename } from 'path'
+import { pathToFileURL } from 'node:url'
 import { resolveStrategy } from '../core/notify-rules'
 import { AgentEvent, SessionView, SoundKind } from '../shared/events'
 import { IPC } from '../shared/ipc-channels'
@@ -68,14 +69,14 @@ export class Notifier {
     }
   }
 
-  /** 读取用户自定义音效（配置存在且文件可读时返回字节；否则回退内置合成） */
-  private customAudio(type: SoundKind | null): { name: string; data: Uint8Array } | undefined {
+  /** 用户自定义音效的 file:// 地址（配置存在且文件存在时返回；否则回退内置合成） */
+  private customAudio(type: SoundKind | null): { name: string; url: string } | undefined {
     if (!type || !this.config) return undefined
     const file = this.config.get('customSounds')?.[type]
     if (!file) return undefined
     try {
-      const data = new Uint8Array(fs.readFileSync(file))
-      return { name: basename(file), data }
+      if (!fs.existsSync(file)) return undefined
+      return { name: basename(file), url: pathToFileURL(file).toString() }
     } catch {
       return undefined // 文件被删除/不可读：回退内置音色
     }

@@ -57,7 +57,7 @@ export interface PupilApi {
   /** 退出应用 */
   quit(): void
   /** 订阅音效播放指令（主进程按通知策略驱动，携带最新音色包/音量/自定义音效字节） */
-  onSoundPlay(cb: (payload: { type: string; pack?: string; volume?: number; custom?: { name: string; data: Uint8Array } }) => void): () => void
+  onSoundPlay(cb: (payload: { type: string; pack?: string; volume?: number; custom?: { name: string; url?: string; data?: Uint8Array } }) => void): () => void
   /** 订阅全局光标注视方向（眼神跟随；gx/gy 为相对球心单位向量，死区内 0,0） */
   onGaze(cb: (g: { gx: number; gy: number }) => void): () => void
   /** 订阅状态播报气泡（主进程边沿检测触发；勿扰时不会收到） */
@@ -101,7 +101,7 @@ const api: PupilApi = {
   getHistory: (limit) => ipcRenderer.invoke(IPC.historyGet, limit),
   quit: () => ipcRenderer.send(IPC.appQuit),
   onSoundPlay: (cb) => {
-    const listener = (_e: IpcRendererEvent, payload: { type: string; pack?: string; volume?: number; custom?: { name: string; data: Uint8Array } }): void =>
+    const listener = (_e: IpcRendererEvent, payload: { type: string; pack?: string; volume?: number; custom?: { name: string; url?: string; data?: Uint8Array } }): void =>
       cb(payload)
     ipcRenderer.on(IPC.soundPlay, listener)
     return () => ipcRenderer.removeListener(IPC.soundPlay, listener)
