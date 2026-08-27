@@ -2,99 +2,201 @@
  * Updater —— GitHub Releases 更新检查/下载（无 electron-updater 依赖）
  *
  * 检查：GET github.com/<owner>/<repo>/releases/latest（公开仓库无需认证）
- * 下载：用户点击后把安装包拉到系统临时目录，再用 shell 打开让用户完成安装
+ * 下载：v0.6.2 起 —— 实测带宽选源 + 多线程分块并行 + 低速看门狗：
+ *   1. 对每个候选源（直连 + 镜像）发一个 512KB 的 Range 探测请求，量出真实吞吐
+ *      （此前按 HEAD 延迟选源，延迟低 ≠ 速度快），同时探测出该源是否支持 Range；
+ *   2. 最快且支持 Range 的源用 6 个连接并行下载不同字节区间，直写文件对应偏移；
+ *   3. 不支持 Range 的源回退单流下载；单流带看门狗——平均速度低于阈值即换源，
+ *      替代旧的"60 秒硬超时整段重来"（白白丢掉已下的进度）。
+ * 安装：sha256 与 GitHub release digest 比对通过后标记退出静默安装（NSIS /S）。
  * 说明：NSIS 安装版优先，portable 兜底；开发模式（非打包）不做网络检查。
  */
 import { app, Notification, shell } from 'electron'
-import { createWriteStream, promises as fsp } from 'node:fs'
+import { createReadStream, promises as fsp } from 'node:fs'
 import { join } from 'node:path'
 import { createHash } from 'node:crypto'
 import { spawn } from 'node:child_process'
 import { UpdateCheckResult } from '../shared/ipc-channels'
-import { downloadMirrors, GitHubRelease, isNewerVersion, parseGitHubRelease } from './update-core'
+import {
+  downloadMirrors,
+  GitHubRelease,
+  isNewerVersion,
+  parseGitHubRelease,
+  splitRanges
+} from './update-core'
 
 const OWNER = 'xuxuyouxiu'
 const REPO = 'Pupil'
 const RELEASE_API = `https://api.github.com/repos/${OWNER}/${REPO}/releases/latest`
 const CHECK_TIMEOUT_MS = 10_000
-/** 单个下载源（直连/镜像）的尝试超时；超时自动切下一个镜像 */
-const DOWNLOAD_ATTEMPT_TIMEOUT_MS = 60_000
+/** 单个下载源（直连/镜像）的尝试超时上限；远端完全无响应的兜底 */
+const DOWNLOAD_ATTEMPT_TIMEOUT_MS = 120_000
 /** 并行探测下载源是否可达的时间窗口 */
-const PROBE_TIMEOUT_MS = 5_000
+const PROBE_TIMEOUT_MS = 6_000
+/** 实测带宽探测的字节数 */
+const RANGE_PROBE_BYTES = 512 * 1024
+/** 并行下载连接数 */
+const PARALLEL_CHUNKS = 6
+/** 每个分块连接的绝对超时兜底 */
+const PER_CHUNK_TIMEOUT_MS = 180_000
+/** 看门狗：单流模式平均速度低于该值视为该源太慢，换下一个源 */
+const MIN_AVG_SPEED_BPS = 48 * 1024
+/** 看门狗生效前给 TCP 慢启动的宽限时间 */
+const SPEED_WATCHDOG_GRACE_MS = 15_000
 
-/** HEAD 探测候选源可用性并测速；失败/超时返回 null */
-async function probeSource(url: string): Promise<{ url: string; ms: number } | null> {
+/** 探测单个源：Range 小段真实下载测吞吐；失败返回 null */
+async function scoreSource(url: string): Promise<{ url: string; bps: number; supportsRange: boolean } | null> {
   const started = Date.now()
+  try {
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: { Range: `bytes=0-${RANGE_PROBE_BYTES - 1}` },
+      redirect: 'follow',
+      signal: AbortSignal.timeout(PROBE_TIMEOUT_MS)
+    })
+    if (!res.ok || !res.body) return null
+    const supportsRange = res.status === 206
+    const reader = res.body.getReader()
+    let bytes = 0
+    while (bytes < RANGE_PROBE_BYTES) {
+      const { done, value } = await reader.read()
+      if (done) break
+      bytes += value.length
+    }
+    // 已达探测字节数就掐断流：源可能忽略 Range 返回整包
+    void reader.cancel().catch(() => undefined)
+    const ms = Date.now() - started
+    if (bytes === 0) return null
+    return { url, bps: (bytes / Math.max(1, ms)) * 1000, supportsRange }
+  } catch {
+    return null
+  }
+}
+
+/** HEAD 取安装包总大小；拿不到返回 0 */
+async function headContentLength(url: string): Promise<number> {
   try {
     const res = await fetch(url, {
       method: 'HEAD',
       redirect: 'follow',
       signal: AbortSignal.timeout(PROBE_TIMEOUT_MS)
     })
-    if (!res.ok) return null
-    return { url, ms: Date.now() - started }
+    return Number(res.headers.get('content-length')) || 0
   } catch {
-    return null
+    return 0
   }
 }
 
 /**
- * 流式写入 + 背压（磁盘慢时暂停读网络），避免 88MB 全堆内存；失败清理 .downloading。
- * 返回所写字节的 sha256（hex）——供安装前与 GitHub 官方 digest 比对。
+ * 把 [start,end] 区间的响应体写到文件句柄指定偏移。
+ * end=-1 表示不分块的完整流（不带 Range 头）；块模式下写完必须精确到位否则抛错。
  */
-async function downloadBinaryWithProgress(
+async function streamRangeIntoFile(
   url: string,
-  savePath: string,
+  fh: fsp.FileHandle,
+  start: number,
+  end: number,
   timeoutMs: number,
-  onProgress: (pct: number) => void
-): Promise<string> {
-  const res = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(timeoutMs) })
-  if (!res.ok || !res.body) throw new Error(`download HTTP ${res.status}`)
-  const total = Number(res.headers.get('content-length')) || 0
-  const tmp = `${savePath}.downloading`
-  const writer = createWriteStream(tmp)
-  const hasher = createHash('sha256')
-  const reader = res.body.getReader()
-  let downloaded = 0
-  let writerError: Error | null = null
-  writer.on('error', (e: Error) => {
-    writerError = e
-  })
-
-  const writeChunk = async (chunk: Uint8Array): Promise<void> => {
-    hasher.update(chunk)
-    if (writer.write(chunk)) return
-    await new Promise<void>((resolve, reject) => {
-      writer.once('drain', resolve)
-      writer.once('error', reject)
-    })
-  }
-
+  onBytes: (n: number) => void
+): Promise<void> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {
+    const headers: Record<string, string> = {}
+    if (end >= 0) headers.Range = `bytes=${start}-${end}`
+    const res = await fetch(url, { headers, redirect: 'follow', signal: controller.signal })
+    if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`)
+    let pos = start
+    const reader = res.body.getReader()
     while (true) {
       const { done, value } = await reader.read()
       if (done) break
-      await writeChunk(value)
-      downloaded += value.length
-      if (total > 0) onProgress(Math.min(99, Math.round((downloaded / total) * 100)))
+      await fh.write(Buffer.from(value), 0, value.length, pos)
+      pos += value.length
+      onBytes(value.length)
     }
-    await new Promise<void>((resolve, reject) => {
-      if (writerError) {
-        reject(writerError)
-        return
-      }
-      writer.once('error', reject)
-      writer.once('finish', resolve)
-      writer.end()
-    })
-  } catch (e) {
-    writer.destroy()
-    await fsp.unlink(tmp).catch(() => undefined)
-    throw e
+    if (end >= 0 && pos !== end + 1) {
+      throw new Error(`chunk incomplete: wrote up to ${pos}, expected ${end + 1}`)
+    }
+  } finally {
+    clearTimeout(timer)
   }
-  await fsp.rm(savePath, { force: true }).catch(() => undefined)
-  await fsp.rename(tmp, savePath)
-  return hasher.digest('hex')
+}
+
+/**
+ * 单流 + 看门狗：平均速度低于阈值时抛错换源（宽限期后开始计时），
+ * 比旧版"60 秒硬超时从零重下"更聪明——慢源不再浪费已下载的部分判断权。
+ */
+async function streamSingleWithWatchdog(
+  url: string,
+  fh: fsp.FileHandle,
+  timeoutMs: number,
+  onBytes: (n: number) => void
+): Promise<void> {
+  const started = Date.now()
+  let received = 0
+  const wrappedTick = (n: number): void => {
+    received += n
+    const elapsed = Date.now() - started
+    if (
+      elapsed > SPEED_WATCHDOG_GRACE_MS &&
+      elapsed < timeoutMs &&
+      received / elapsed < MIN_AVG_SPEED_BPS
+    ) {
+      throw new Error(`source too slow (${Math.round(received / elapsed / 1024)} KB/s avg)`)
+    }
+    onBytes(n)
+  }
+  await streamRangeIntoFile(url, fh, 0, -1, timeoutMs, wrappedTick)
+}
+
+/** 流式读取已落盘文件的 sha256 */
+function sha256File(path: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const hasher = createHash('sha256')
+    const rs = createReadStream(path)
+    rs.on('data', (c) => hasher.update(c))
+    rs.on('error', reject)
+    rs.on('end', () => resolve(hasher.digest('hex')))
+  })
+}
+
+/**
+ * 分块并行下载到临时文件并返回 sha256（hex）：
+ * 支持 Range 的源开 PARALLEL_CHUNKS 个连接各取一段、直写偏移；
+ * 不支持或 HEAD 拿不到总大小时退回单流看门狗。任一块失败即整体失败换源。
+ * 只写 tmpPath 不做落位——原子改名由调用方完成。
+ */
+async function downloadTo(
+  url: string,
+  tmpPath: string,
+  opts: { supportsRange: boolean; total: number },
+  onProgress: (received: number, elapsedMs: number) => void
+): Promise<string> {
+  const fh = await fsp.open(tmpPath, 'w')
+  try {
+    let received = 0
+    const started = Date.now()
+    const tick = (n: number): void => {
+      received += n
+      onProgress(received, Date.now() - started)
+    }
+
+    if (opts.supportsRange && opts.total > 0) {
+      const ranges = splitRanges(opts.total, PARALLEL_CHUNKS)
+      await Promise.all(
+        ranges.map(([start, end]) =>
+          streamRangeIntoFile(url, fh, start, end, PER_CHUNK_TIMEOUT_MS, tick)
+        )
+      )
+    } else {
+      await streamSingleWithWatchdog(url, fh, DOWNLOAD_ATTEMPT_TIMEOUT_MS, tick)
+    }
+  } finally {
+    await fh.close().catch(() => undefined)
+  }
+
+  return sha256File(tmpPath)
 }
 
 export class Updater {
@@ -210,36 +312,55 @@ export class Updater {
     const assetName = this.result.assetName ?? `Pupil-${this.result.latestVersion}.exe`
     const expectedSha256 = this.assetDigest?.replace(/^sha256:/i, '').toLowerCase()
     const dest = join(app.getPath('temp'), assetName)
+
+    // 实测带宽排序候选源（直连 + 镜像一视同仁）
+    const mirrors = downloadMirrors(assetUrl)
+    const scores = await Promise.all(mirrors.map((u) => scoreSource(u)))
+    const live = scores.filter((s): s is NonNullable<typeof s> => s !== null)
+    const ranked = [...live].sort((a, b) => b.bps - a.bps)
+    // 排序规则：支持 Range 的实测最快优先，其次不支持 Range 的（单流看门狗），探测全挂的按原始顺序垫底
+    type ScoredSource = { url: string; bps: number; supportsRange: boolean }
+    const ordered: ScoredSource[] = [
+      ...ranked.filter((s) => s.supportsRange),
+      ...ranked.filter((s) => !s.supportsRange),
+      ...mirrors
+        .filter((u) => !live.some((s) => s.url === u))
+        .map((url) => ({ url, bps: 0, supportsRange: false }))
+    ]
+    console.log(
+      '[updater] source ranking:',
+      ranked.map((s) => `${new URL(s.url).host} ${(s.bps / 1024 / 1024).toFixed(2)} MB/s${s.supportsRange ? '' : ' (no-range)'}`).join(' | ')
+    )
+
     this.setResult({ ...this.result, status: 'downloading', progress: 0 })
 
-    // 并行 HEAD 测速所有候选源，选最快可达的（避免直连卡 60s 才切镜像）
-    const candidates = downloadMirrors(assetUrl)
-    const probes = await Promise.all(candidates.map((url) => probeSource(url)))
-    const reachable = probes
-      .filter((p): p is { url: string; ms: number } => p !== null)
-      .sort((a, b) => a.ms - b.ms)
-    const ordered = [
-      ...reachable.map((p) => p.url),
-      ...candidates.filter((url) => !reachable.some((p) => p.url === url))
-    ]
-
-    for (const url of ordered) {
+    for (const cand of ordered) {
       try {
-        const actualSha256 = await downloadBinaryWithProgress(
-          url,
-          dest,
-          DOWNLOAD_ATTEMPT_TIMEOUT_MS,
-          (pct) => this.setResult({ ...this.result, status: 'downloading', progress: pct })
-        )
+        const total = cand.supportsRange ? await headContentLength(cand.url) : 0
+        const tmpPath = `${dest}.downloading`
+        const sha = await downloadTo(cand.url, tmpPath, { supportsRange: cand.supportsRange, total }, (recv, elapsed) => {
+          const pct = total > 0 ? Math.min(99, Math.round((recv / total) * 100)) : undefined
+          this.setResult({
+            ...this.result,
+            status: 'downloading',
+            ...(pct !== undefined ? { progress: pct } : {}),
+            speedBps: elapsed > 500 ? recv / (elapsed / 1000) : undefined
+          })
+        })
         // 官方 digest 校验：镜像链路可能被篡改/损坏，直接执行安装包等于任意代码执行。
         // 无 digest（旧 API 响应）时跳过校验但保留告警。
-        if (expectedSha256 && actualSha256.toLowerCase() !== expectedSha256) {
-          await fsp.rm(dest, { force: true }).catch(() => undefined)
-          throw new Error(`sha256 mismatch: got ${actualSha256.slice(0, 16)}…`)
+        if (expectedSha256 && sha.toLowerCase() !== expectedSha256) {
+          throw new Error(`sha256 mismatch: got ${sha.slice(0, 16)}…`)
         }
         if (!expectedSha256) {
           console.warn('[updater] release has no digest field — skipped integrity verification')
         }
+        // 原子落位：tmp -> dest（校验通过后才替换旧文件）
+        await fsp.rename(tmpPath, dest).catch(async () => {
+          // Windows 上 dest 若被占用会 EPERM：删掉重试一次
+          await fsp.rm(dest, { force: true })
+          await fsp.rename(tmpPath, dest)
+        })
         this.setResult({ ...this.result, status: 'downloaded', progress: 100, assetUrl: undefined })
         // 一键热更：不再打开安装向导，标记退出后自动静默安装并重启
         this.pendingInstaller = dest
@@ -254,7 +375,8 @@ export class Updater {
         setTimeout(() => app.quit(), 1200)
         return this.result
       } catch (error) {
-        console.warn('[updater] download failed, trying next:', url, error instanceof Error ? error.message : error)
+        console.warn('[updater] download failed, trying next:', new URL(cand.url).host, error instanceof Error ? error.message : error)
+        await fsp.rm(`${dest}.downloading`, { force: true }).catch(() => undefined)
       }
     }
 

@@ -109,3 +109,22 @@ export function buildUpdateResult(
   const status: UpdateStatus = partial.status ?? 'disabled'
   return { status, currentVersion: partial.currentVersion } as UpdateCheckResult
 }
+
+/**
+ * 把总字节数切成 n 个连续区间 [start,end]（双闭区间，供 HTTP Range 使用）。
+ * 尾部余数摊给前 mod 个块；大小不足以切满时丢弃空块，保证每块至少 1 字节。
+ */
+export function splitRanges(total: number, chunks: number): Array<[number, number]> {
+  if (!Number.isFinite(total) || total <= 0 || chunks <= 0) return total > 0 ? [[0, total - 1]] : []
+  const base = Math.floor(total / chunks)
+  const rem = total % chunks
+  const out: Array<[number, number]> = []
+  let cursor = 0
+  for (let i = 0; i < chunks; i++) {
+    const size = base + (i < rem ? 1 : 0)
+    if (size <= 0) break
+    out.push([cursor, cursor + size - 1])
+    cursor += size
+  }
+  return out
+}

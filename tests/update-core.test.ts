@@ -8,7 +8,8 @@ import {
   isNewerVersion,
   normalizeVersion,
   parseGitHubRelease,
-  pickUpdateAsset
+  pickUpdateAsset,
+  splitRanges
 } from '../src/main/update-core'
 
 describe('compareVersions', () => {
@@ -85,5 +86,31 @@ describe('parseGitHubRelease', () => {
     const parsed = parseGitHubRelease(undefined)
     expect(parsed.latestVersion).toBe('')
     expect(parsed.asset).toBeUndefined()
+  })
+})
+
+describe('splitRanges（分块下载区间计算）', () => {
+  it('整除场景：6 块均分且连续无缝', () => {
+    expect(splitRanges(600, 6)).toEqual([
+      [0, 99], [100, 199], [200, 299], [300, 399], [400, 499], [500, 599]
+    ])
+  })
+
+  it('有余数：前 mod 个块各多 1 字节，区间仍连续', () => {
+    const ranges = splitRanges(101, 4)
+    // 覆盖完整 [0,100] 且互不重叠
+    let cursor = 0
+    for (const [s, e] of ranges) {
+      expect(s).toBe(cursor)
+      cursor = e + 1
+    }
+    expect(cursor).toBe(101)
+  })
+
+  it('总大小小于块数时丢弃空块', () => {
+    const ranges = splitRanges(3, 6)
+    expect(ranges).toHaveLength(3)
+    expect(ranges[0]).toEqual([0, 0])
+    expect(ranges[2]).toEqual([2, 2])
   })
 })

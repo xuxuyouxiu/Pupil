@@ -51,6 +51,8 @@ export interface UpdateCheckResult {
   status: UpdateStatus
   /** 下载进度 0-100（仅 status='downloading' 时有意义） */
   progress?: number
+  /** 下载平均速度 字节/秒（仅 downloading 时有意义，用于界面展示） */
+  speedBps?: number
   currentVersion: string
   latestVersion?: string
   /** 发布说明（release.name / body 摘要） */

@@ -7,6 +7,7 @@ import { SettingsSnapshot, UpdateCheckResult } from '../../shared/ipc-channels'
 import { SoundKind } from '../../shared/events'
 import { Moon, VolumeX, ChevronRight, X, Rocket, Music, Volume2, Download } from '../shared/icons'
 import { listSoundPacks, setSoundConfig, playSound } from '../ball/sound'
+import { formatSpeed } from '../../shared/format'
 
 interface Props {
   onBack: () => void
@@ -35,7 +36,9 @@ function updateDesc(u: UpdateCheckResult | null): string {
     case 'available':
       return `发现 v${u.latestVersion ?? ''}，可点击下载更新`
     case 'downloading':
-      return u.progress != null ? `正在下载安装包… ${u.progress}%` : '正在尝试下载源…'
+      return u.progress != null
+        ? `正在下载安装包… ${u.progress}%${formatSpeed(u.speedBps) ? ` · ${formatSpeed(u.speedBps)}` : ''}`
+        : '正在尝试下载源…'
     case 'downloaded':
       return '安装包已下载，请完成安装'
     case 'not-available':
