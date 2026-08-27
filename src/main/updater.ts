@@ -16,7 +16,7 @@
  * net.fetch 与系统代理行为一致，代理开启即自动生效；app 未就绪时兜底回退 Node fetch。
  */
 import { app, Notification, net, shell } from 'electron'
-import { createReadStream, promises as fsp } from 'node:fs'
+import { createReadStream, promises as fsp, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { createHash } from 'node:crypto'
 import { spawn } from 'node:child_process'
@@ -101,7 +101,28 @@ async function headContentLength(url: string): Promise<number> {
 /**
  * 把 [start,end] 区间的响应体写到文件句柄指定偏移。
  * end=-1 表示不分块的完整流（不带 Range 头）；块模式下写完必须精确到位否则抛错。
+ * v0.8.1 防挂死双保险：不依赖 net.fetch 对 AbortSignal 的支持程度——
+ *   1) 整体硬超时 race（fetch 挂死也能跳到下一个源）；
+ *   2) 读循环内 30s 无新数据判定卡死，主动 abort 并抛错换源。
  */
+const STALL_TIMEOUT_MS = 30_000
+
+function withHardTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`${what} timed out after ${ms}ms`)), ms)
+    p.then(
+      (v) => {
+        clearTimeout(timer)
+        resolve(v)
+      },
+      (e) => {
+        clearTimeout(timer)
+        reject(e instanceof Error ? e : new Error(String(e)))
+      }
+    )
+  })
+}
+
 async function streamRangeIntoFile(
   url: string,
   fh: fsp.FileHandle,
@@ -112,15 +133,29 @@ async function streamRangeIntoFile(
 ): Promise<void> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
+  let stallTimer: NodeJS.Timeout | undefined
   try {
     const headers: Record<string, string> = {}
     if (end >= 0) headers.Range = `bytes=${start}-${end}`
-    const res = await httpFetch(url, { headers, redirect: 'follow', signal: controller.signal })
+    const res = await withHardTimeout(
+      httpFetch(url, { headers, redirect: 'follow', signal: controller.signal }),
+      timeoutMs,
+      'request'
+    )
     if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`)
     let pos = start
     const reader = res.body.getReader()
     while (true) {
-      const { done, value } = await reader.read()
+      // 单次 read 超过 STALL_TIMEOUT_MS 无返回 => 判定卡死，掐断换源
+      const { done, value } = await Promise.race([
+        reader.read(),
+        new Promise<never>((_, rej) => {
+          stallTimer = setTimeout(
+            () => rej(new Error(`stalled: no data for ${STALL_TIMEOUT_MS / 1000}s`)),
+            STALL_TIMEOUT_MS
+          )
+        })
+      ]).finally(() => clearTimeout(stallTimer))
       if (done) break
       await fh.write(Buffer.from(value), 0, value.length, pos)
       pos += value.length
@@ -131,6 +166,7 @@ async function streamRangeIntoFile(
     }
   } finally {
     clearTimeout(timer)
+    controller.abort() // 正常结束时为无害 no-op；挂死时确保底层连接被掐断
   }
 }
 
@@ -407,20 +443,38 @@ export class Updater {
   }
 
   /**
-   * 主进程 will-quit 时调用：取走待静默安装的包路径并拉起 NSIS /S。
-   * 无待装任务返回 null。spawn 失败回退打开向导（shell.openPath）。
+   * 主进程 will-quit 时调用：取走待静默安装的包路径并拉起安装。
+   * v0.8.1 改为批处理时序（等 1s → taskkill 强杀残留 Pupil.exe → 静默安装 /S）：
+   * 之前直接 spawn 安装器，旧进程尚未完全退出时 NSIS 静默模式会卡在"关闭程序"确认上
+   * 无人点击 => 永远挂住（用户表现「后台没退软件更新就卡住」）。
+   * 批处理由系统调度接管时序，不依赖本进程的退出进度。spawn 失败回退打开向导。
    */
   consumePendingInstaller(): string | null {
-    const path = this.pendingInstaller
+    const installerPath = this.pendingInstaller
     this.pendingInstaller = null
-    if (!path) return null
+    if (!installerPath) return null
     try {
-      const child = spawn(path, ['/S'], { detached: true, stdio: 'ignore' })
+      const bat = join(app.getPath('temp'), 'pupil-silent-install.cmd')
+      writeFileSync(
+        bat,
+        [
+          '@echo off',
+          'timeout /t 1 /nobreak >nul',
+          'taskkill /F /IM Pupil.exe >nul 2>&1',
+          `start "" "${installerPath}" /S`
+        ].join('\r\n'),
+        'utf8'
+      )
+      const child = spawn('cmd.exe', ['/d', '/c', bat], {
+        detached: true,
+        stdio: 'ignore',
+        windowsHide: true
+      })
       child.unref()
     } catch {
-      void shell.openPath(path)
+      void shell.openPath(installerPath)
     }
-    return path
+    return installerPath
   }
 
   private setResult(next: UpdateCheckResult): void {
