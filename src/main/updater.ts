@@ -172,7 +172,21 @@ export class Updater {
     if (this.result.releaseUrl) void shell.openExternal(this.result.releaseUrl)
   }
 
-  /** 下载最新安装包并打开（用户手动触发）；先并行探测最快源，再流式下到文件，校验通过才执行 */
+  /**
+   * 用户点击「下载更新」：立即返回当前快照并后台开跑。
+   * 此前 IPC 直接 await 整个下载流程（数分钟），渲染端拿到的 status 始终停留在
+   * available，500ms 轮询永不启动——进度条自 v0.5.5 起从未真正显示过。
+   * 现改为调用即返回 downloading 快照，渲染端靠既有轮询循环持续取进度；
+   * 同步段（守卫 + setResult(downloading)）在返回前已执行完，无竞态。
+   */
+  startDownload(): UpdateCheckResult {
+    if (this.downloading) return this.result
+    if (this.result.status !== 'available' || !this.result.assetUrl) return this.result
+    void this.downloadAndOpen().catch((e) => console.warn('[updater] download crashed:', e))
+    return this.result
+  }
+
+  /** 后台执行完整下载；用户手动触发 */
   async downloadAndOpen(): Promise<UpdateCheckResult> {
     if (this.downloading) return this.result // 防连点重入：两条流写同一临时文件会互相覆盖
     if (this.result.status !== 'available' || !this.result.assetUrl) return this.result

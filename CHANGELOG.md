@@ -2,6 +2,11 @@
 
 本文件记录 Pupil 的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.5.10] - 2026-08-27
+
+### 修复
+- **下载更新的进度条从未真正显示过**（v0.5.5 引入即存在）：IPC 处理器把整个下载流程 await 到底（88MB 走完才返回），期间渲染端拿到的 status 一直停在 available，「downloading 才启动」的 500ms 轮询条件永不满足，进度条与百分比因而全程不可见；改为 `Updater.startDownload()` 即时返回 downloading 快照并把下载转入后台执行（守卫段与首次 setResult 均在返回前同步完成，无竞态），渲染端沿用既有轮询循环实时刷新
+
 ## [0.5.9] - 2026-08-27
 
 ### 修复
