@@ -102,6 +102,14 @@ export function downloadMirrors(url: string): string[] {
   ]
 }
 
+/** 阿里云 CDN 下载域（与 PodMuse 同 bucket/域；发布流水线自动同步产物到 download/v{version}/） */
+export const OSS_CDN_BASE = 'https://dl.xuxuya66.top/download'
+
+/** 拼安装包的 CDN 直链（探测阶段该文件未同步/不可达时自然被淘汰） */
+export function cdnAssetUrl(version: string, assetName: string): string {
+  return `${OSS_CDN_BASE}/v${version}/${assetName}`
+}
+
 /** 组合成一个 UpdateCheckResult（不包含网络请求的副作用） */
 export function buildUpdateResult(
   partial: Pick<UpdateCheckResult, 'currentVersion'> & Partial<UpdateCheckResult>

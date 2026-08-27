@@ -2,6 +2,15 @@
 
 本文件记录 Pupil 的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.7.1] - 2026-08-27
+
+### 新增
+- **阿里云 CDN 下载通道（与 PodMuse 复用同一 bucket）**：发布流水线在 GitHub Release 后自动把安装包/blockmap/latest.yml 同步到 `dl.xuxuya66.top/download/v{版本}/`（scripts/sync-release-oss.py，Secrets 未配置自动跳过）；应用内更新候选源新增 CDN 直链且置顶——512KB 实测吞吐排序下国内用户通常直接命中 CDN 全速下载，未同步/不可达时自动被淘汰回退 GitHub 链路
+
+### 修复
+- **更新下载全部失败（用户挂代理场景必现）**：更新器此前用 Node 全局 `fetch`，而 Node fetch **不认系统代理/PAC**——开着 Clash/v2rayN 的「系统代理」它也照样直连，直连 GitHub 不通就全军覆没；全部请求（检查/探测/分块下载/HEAD）改走 Electron `net.fetch`（Chromium 网络栈），系统代理开启即自动跟随，代理软件无需任何配置
+- **失败提示带真实原因**：之前只说「可能是网络/代理问题」；现在显示尝试过的源数量、末次失败的具体原因，并明确提示「更新器已跟随系统代理，请确认代理开启系统代理模式」
+
 ## [0.7.0] - 2026-08-27
 
 ### 新增

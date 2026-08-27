@@ -10,20 +10,31 @@
  *      替代旧的"60 秒硬超时整段重来"（白白丢掉已下的进度）。
  * 安装：sha256 与 GitHub release digest 比对通过后标记退出静默安装（NSIS /S）。
  * 说明：NSIS 安装版优先，portable 兜底；开发模式（非打包）不做网络检查。
+ *
+ * v0.7.1 网络栈更换：全部请求改走 Electron net.fetch（Chromium 网络栈）——
+ * Node 全局 fetch 不认系统代理/PAC（用户挂 Clash 等代理时更新必失败，直连 GitHub 不通），
+ * net.fetch 与系统代理行为一致，代理开启即自动生效；app 未就绪时兜底回退 Node fetch。
  */
-import { app, Notification, shell } from 'electron'
+import { app, Notification, net, shell } from 'electron'
 import { createReadStream, promises as fsp } from 'node:fs'
 import { join } from 'node:path'
 import { createHash } from 'node:crypto'
 import { spawn } from 'node:child_process'
 import { UpdateCheckResult } from '../shared/ipc-channels'
 import {
+  cdnAssetUrl,
   downloadMirrors,
   GitHubRelease,
   isNewerVersion,
   parseGitHubRelease,
   splitRanges
 } from './update-core'
+
+/** 统一网络入口：走 Chromium 栈（系统代理/PAC 生效）；app 未 ready 时回退 Node fetch */
+function httpFetch(url: string, init?: RequestInit): Promise<Response> {
+  if (app.isReady()) return net.fetch(url, init)
+  return fetch(url, init)
+}
 
 const OWNER = 'xuxuyouxiu'
 const REPO = 'Pupil'
@@ -48,7 +59,7 @@ const SPEED_WATCHDOG_GRACE_MS = 15_000
 async function scoreSource(url: string): Promise<{ url: string; bps: number; supportsRange: boolean } | null> {
   const started = Date.now()
   try {
-    const res = await fetch(url, {
+    const res = await httpFetch(url, {
       method: 'GET',
       headers: { Range: `bytes=0-${RANGE_PROBE_BYTES - 1}` },
       redirect: 'follow',
@@ -76,7 +87,7 @@ async function scoreSource(url: string): Promise<{ url: string; bps: number; sup
 /** HEAD 取安装包总大小；拿不到返回 0 */
 async function headContentLength(url: string): Promise<number> {
   try {
-    const res = await fetch(url, {
+    const res = await httpFetch(url, {
       method: 'HEAD',
       redirect: 'follow',
       signal: AbortSignal.timeout(PROBE_TIMEOUT_MS)
@@ -104,7 +115,7 @@ async function streamRangeIntoFile(
   try {
     const headers: Record<string, string> = {}
     if (end >= 0) headers.Range = `bytes=${start}-${end}`
-    const res = await fetch(url, { headers, redirect: 'follow', signal: controller.signal })
+    const res = await httpFetch(url, { headers, redirect: 'follow', signal: controller.signal })
     if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`)
     let pos = start
     const reader = res.body.getReader()
@@ -230,7 +241,7 @@ export class Updater {
     this.checking = true
     this.result = { status: 'checking', currentVersion: app.getVersion() }
     try {
-      const res = await fetch(RELEASE_API, {
+      const res = await httpFetch(RELEASE_API, {
         headers: {
           'user-agent': 'pupil-updater',
           accept: 'application/vnd.github+json'
@@ -313,8 +324,12 @@ export class Updater {
     const expectedSha256 = this.assetDigest?.replace(/^sha256:/i, '').toLowerCase()
     const dest = join(app.getPath('temp'), assetName)
 
-    // 实测带宽排序候选源（直连 + 镜像一视同仁）
-    const mirrors = downloadMirrors(assetUrl)
+    // 候选源：阿里云 CDN（PodMuse 同 bucket，国内全速）置顶 + 直连 + 三个镜像。
+    // CDN 文件由发布流水线自动同步；尚未同步时探测 404 自然淘汰，不影响排序逻辑
+    const mirrors = [
+      cdnAssetUrl(this.result.latestVersion ?? '', assetName),
+      ...downloadMirrors(assetUrl)
+    ]
     const scores = await Promise.all(mirrors.map((u) => scoreSource(u)))
     const live = scores.filter((s): s is NonNullable<typeof s> => s !== null)
     const ranked = [...live].sort((a, b) => b.bps - a.bps)
@@ -334,6 +349,7 @@ export class Updater {
 
     this.setResult({ ...this.result, status: 'downloading', progress: 0 })
 
+    let lastError = ''
     for (const cand of ordered) {
       try {
         const total = cand.supportsRange ? await headContentLength(cand.url) : 0
@@ -375,7 +391,8 @@ export class Updater {
         setTimeout(() => app.quit(), 1200)
         return this.result
       } catch (error) {
-        console.warn('[updater] download failed, trying next:', new URL(cand.url).host, error instanceof Error ? error.message : error)
+        lastError = error instanceof Error ? error.message : String(error)
+        console.warn('[updater] download failed, trying next:', new URL(cand.url).host, lastError)
         await fsp.rm(`${dest}.downloading`, { force: true }).catch(() => undefined)
       }
     }
@@ -384,7 +401,7 @@ export class Updater {
       ...this.result,
       status: 'error',
       progress: undefined,
-      error: '所有下载源均失败或校验不通过（可能是网络/代理问题），请手动打开发布页下载'
+      error: `全部 ${ordered.length} 个下载源均失败（末次原因：${lastError || '未知'}）。更新器已跟随系统代理——若你开了代理软件，请确认已开启「系统代理」模式后重试；或点下方按钮手动下载`
     })
     return this.result
   }

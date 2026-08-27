@@ -114,3 +114,12 @@ describe('splitRanges（分块下载区间计算）', () => {
     expect(ranges[2]).toEqual([2, 2])
   })
 })
+
+describe('cdnAssetUrl（阿里云 CDN 候选源）', () => {
+  it('拼接 download/v{版本}/{文件名} 路径', async () => {
+    const { cdnAssetUrl } = await import('../src/main/update-core')
+    expect(cdnAssetUrl('0.7.1', 'Pupil-0.7.1-x64.exe')).toBe(
+      'https://dl.xuxuya66.top/download/v0.7.1/Pupil-0.7.1-x64.exe'
+    )
+  })
+})

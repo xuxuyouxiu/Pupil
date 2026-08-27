@@ -36,3 +36,15 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npx electron-builder --win nsis portable --publish always
+
+      # 同步产物到阿里云 OSS（bucket 与 PodMuse 复用，更新器候选源含 dl.xuxuya66.top CDN 直链）。
+      # Secrets 未配置时脚本自行跳过，不阻塞发布
+      - name: Sync to Aliyun OSS（国内下载通道）
+        env:
+          PYTHONIOENCODING: utf-8
+          OSS_AK_ID: ${{ secrets.OSS_AK_ID }}
+          OSS_AK_SECRET: ${{ secrets.OSS_AK_SECRET }}
+          OSS_ENDPOINT: ${{ secrets.OSS_ENDPOINT }}
+        run: |
+          pip install oss2 --quiet
+          python scripts/sync-release-oss.py
