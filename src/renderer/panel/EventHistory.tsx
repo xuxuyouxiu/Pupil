@@ -37,6 +37,7 @@ const AGENT_LABEL: Record<string, string> = {
   'claude-code': 'Claude Code',
   codex: 'Codex',
   hermes: 'Hermes',
+  dsh: 'DSH',
   custom: 'Harness'
 }
 

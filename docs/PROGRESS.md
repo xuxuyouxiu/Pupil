@@ -1,6 +1,6 @@
 # Pupil 项目进度记录
 
-> 最后更新：2026-08-26（v0.5.0）
+> 最后更新：2026-08-27（v0.5.3）
 > 本文档记录 Pupil（开源多 Agent 桌面悬浮球监控工具）的开发进度、已完成功能与待办事项，作为团队协作与后续迭代的单一事实来源。设计决策详见 `docs/architecture.md`、需求详见 `docs/PRD.md`、UI 规范详见 `docs/uiux.md`、变更明细见 `CHANGELOG.md`。
 
 ---
@@ -24,7 +24,7 @@
 | 悬浮球（球体 + 精灵眼 + 状态环） | ✅ 完成 | 六态表情 + 动画 + 自定义拖动 |
 | 详情面板（会话列表） | ✅ 完成 | 顶栏汇总 + 会话行 + 跳转窗口 |
 | 设置面板 | ✅ 完成 | 独立设置窗口（v0.3.0），面板内视图保留兼容 |
-| 数据接入层（5 个 adapter） | ✅ 完成 | 通道 A/B/C 全部落地；Codex 补齐 rollout jsonl tail；第三方动态加载（v0.3.0） |
+| 数据接入层（6 个 adapter） | ✅ 完成 | 通道 A/B/C 全部落地；Codex 补齐 rollout jsonl tail；DSH Web API 轮询（v0.5.3）；第三方动态加载（v0.3.0） |
 | 核心逻辑（状态机/推断/通知规则） | ✅ 完成 | 纯函数，无 Electron 依赖；46 个单元测试全绿 |
 | 通知系统（音效 + Toast） | ✅ 完成 | Web Audio 合成音效 + 系统通知；4 套音色包 + 音量可调（v0.2.5） |
 | 窗口激活（跳转会话窗口） | ✅ 完成 | koffi FFI 直调 user32；v0.2.3/24 重写修复回调绑定失效 + 历史行跳转（v0.3.0） |
@@ -62,7 +62,7 @@
 - 底部页签：会话 / 事件历史（历史页签为占位）
 - 设置视图：通知（勿扰/静音）、adapter 开关、Claude Code Hooks 安装/卸载
 
-### 3.4 数据接入层（5 个 adapter 全部完成）
+### 3.4 数据接入层（6 个 adapter 全部完成）
 | adapter | 通道 | 机制 |
 |---------|------|------|
 | `http-ingest` | C | 127.0.0.1:17734 HTTP 端点 + `pupil send` CLI |
@@ -70,6 +70,7 @@
 | `claude-code/log-adapter` | A | tail `~/.claude/projects/*.jsonl` 增量读取 |
 | `codex/log-adapter` | A | `state_5.sqlite` threads 只读轮询（rollout jsonl 预留） |
 | `hermes/sqlite-adapter` | A | `state.db` sessions/messages 差分轮询 |
+| `dsh-api` | C | DSH Web API（`127.0.0.1:3080/api/session.list`）轮询，按权威 `running` 状态映射会话活动 |
 
 - Adapter 插件化：实现 `AgentAdapter` 接口 + registry 注册一行，支持运行时启停（设置面板开关）
 - SQLite 访问：koffi FFI 直调系统 `winsqlite3.dll`（零新增依赖，Electron 33 内置 Node 20 无 `node:sqlite`）

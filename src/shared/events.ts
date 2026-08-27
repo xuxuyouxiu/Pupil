@@ -4,7 +4,7 @@
  */
 
 /** 支持的 Agent 类型 */
-export type AgentType = 'claude-code' | 'codex' | 'hermes' | 'custom'
+export type AgentType = 'claude-code' | 'codex' | 'hermes' | 'dsh' | 'custom'
 
 /** 归一化事件类型（来自架构文档 3.4） */
 export type AgentEventType =

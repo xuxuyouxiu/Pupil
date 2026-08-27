@@ -2,6 +2,11 @@
 
 本文件记录 Pupil 的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.5.3] - 2026-08-27
+
+### 新增
+- **DSH（DeepSeek Harness）适配器**：不再解析 zstd 压缩会话日志，直接轮询 DSH Web API `POST /api/session.list`（默认 `127.0.0.1:3080`，可用 `DSH_API_BASE`/`DSH_WEB_URL` 覆盖），把宿主侧权威 `running` 状态映射为 Pupil 事件——此前 DSH/自研 Harness 跑着任务面板却显示「未检测到运行中的 Agent 会话」，根因是 Pupil 没有识别 DSH 的数据源；现在新发现运行中会话会立即变蓝（`session_started` + `turn_started`），停下变 `turn_completed`，运行中每 30s heartbeat 续期，标题经 `projections.values.title` 同步到面板，设置面板新增「DSH（Web API）」开关
+
 ## [0.5.2] - 2026-08-26
 
 ### 变更

@@ -13,6 +13,7 @@ import { claudeCodeLogAdapterFactory } from '../adapters/claude-code/log-adapter
 import { claudeCodeHooksAdapterFactory } from '../adapters/claude-code/hooks-adapter'
 import { codexLogAdapterFactory } from '../adapters/codex/log-adapter'
 import { hermesSqliteAdapterFactory } from '../adapters/hermes/sqlite-adapter'
+import { dshApiAdapterFactory } from '../adapters/dsh/api-adapter'
 import { HooksInstaller, buildHookCommand } from '../adapters/claude-code/hooks-installer'
 import { SessionRegistry } from '../core/session-registry'
 import { InferenceEngine } from '../core/inference'
@@ -27,7 +28,8 @@ const ADAPTER_LABELS: Record<string, string> = {
   'claude-code-hooks': 'Claude Code Hooks（主通道）',
   'claude-code-log': 'Claude Code 日志（兜底）',
   'codex-log': 'Codex',
-  'hermes-sqlite': 'Hermes'
+  'hermes-sqlite': 'Hermes',
+  'dsh-api': 'DSH（Web API）'
 }
 
 /** 通知策略执行器（由 main 注入：播放音效 + 弹 Toast） */
@@ -97,6 +99,7 @@ export class MonitoringCore {
     this.adapters.register(claudeCodeLogAdapterFactory) // 通道 A 兜底
     this.adapters.register(codexLogAdapterFactory) // 通道 A
     this.adapters.register(hermesSqliteAdapterFactory) // 通道 A
+    this.adapters.register(dshApiAdapterFactory) // 通道 C（DSH Web API 只读轮询）
 
     // P2-6 第三方 adapter 动态加载：%APPDATA%/pupil/adapters/*.js（单文件失败跳过）
     const externals = loadExternalAdapters()
@@ -113,7 +116,8 @@ export class MonitoringCore {
       'claude-code-hooks',
       'claude-code-log',
       'codex-log',
-      'hermes-sqlite'
+      'hermes-sqlite',
+      'dsh-api'
     ]
 
     const disabled = new Set(this.config.get('disabledAdapters') ?? [])

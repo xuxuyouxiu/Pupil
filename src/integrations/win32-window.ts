@@ -86,7 +86,8 @@ const AGENT_WINDOW_HINTS: Partial<Record<AgentType, string[]>> = {
   // Hermes 桌面版是单实例应用，主窗口标题即 "Hermes"，跳到它就是正确行为
   hermes: ['hermes'],
   codex: ['codex'],
-  'claude-code': ['claude']
+  'claude-code': ['claude'],
+  dsh: ['dsh']
 }
 
 /** 本进程窗口（Pupil 球窗/面板窗）绝不作为跳转目标 */
