@@ -23,6 +23,7 @@ const AGENT_LABEL: Record<string, string> = {
   codex: 'Codex',
   hermes: 'Hermes',
   dsh: 'DSH',
+  zcode: 'ZCode',
   custom: '自研 Harness'
 }
 

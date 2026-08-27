@@ -14,6 +14,7 @@ import { claudeCodeHooksAdapterFactory } from '../adapters/claude-code/hooks-ada
 import { codexLogAdapterFactory } from '../adapters/codex/log-adapter'
 import { hermesSqliteAdapterFactory } from '../adapters/hermes/sqlite-adapter'
 import { dshApiAdapterFactory } from '../adapters/dsh/api-adapter'
+import { zcodeRolloutAdapterFactory } from '../adapters/zcode/log-adapter'
 import { HooksInstaller, buildHookCommand } from '../adapters/claude-code/hooks-installer'
 import { SessionRegistry } from '../core/session-registry'
 import { InferenceEngine } from '../core/inference'
@@ -29,7 +30,8 @@ const ADAPTER_LABELS: Record<string, string> = {
   'claude-code-log': 'Claude Code 日志（兜底）',
   'codex-log': 'Codex',
   'hermes-sqlite': 'Hermes',
-  'dsh-api': 'DSH（Web API）'
+  'dsh-api': 'DSH（Web API）',
+  'zcode-rollout': 'ZCode（会话记录）'
 }
 
 /** 通知策略执行器（由 main 注入：播放音效 + 弹 Toast） */
@@ -67,7 +69,9 @@ export class MonitoringCore {
         hermes: config.get('timeoutThresholdMs') ?? 10 * 60 * 1000,
         codex: config.get('timeoutThresholdMs') ?? 10 * 60 * 1000,
         // DSH 是 HTTP 轮询源：短暂连接抖动不应把运行中会话误判为断连
-        dsh: config.get('timeoutThresholdMs') ?? 10 * 60 * 1000
+        dsh: config.get('timeoutThresholdMs') ?? 10 * 60 * 1000,
+        // ZCode 是会话记录 tail 源：与 codex 同理，请求间隔可能很长
+        zcode: config.get('timeoutThresholdMs') ?? 10 * 60 * 1000
       }
     })
     // v0.4.1：超时/断连标记首次翻转 → 音效+Toast（此前只变色不出声）
@@ -102,6 +106,7 @@ export class MonitoringCore {
     this.adapters.register(codexLogAdapterFactory) // 通道 A
     this.adapters.register(hermesSqliteAdapterFactory) // 通道 A
     this.adapters.register(dshApiAdapterFactory) // 通道 C（DSH Web API 只读轮询）
+    this.adapters.register(zcodeRolloutAdapterFactory) // 通道 A（ZCode 会话记录 tail）
 
     // P2-6 第三方 adapter 动态加载：%APPDATA%/pupil/adapters/*.js（单文件失败跳过）
     const externals = loadExternalAdapters()
@@ -119,7 +124,8 @@ export class MonitoringCore {
       'claude-code-log',
       'codex-log',
       'hermes-sqlite',
-      'dsh-api'
+      'dsh-api',
+      'zcode-rollout'
     ]
 
     const disabled = new Set(this.config.get('disabledAdapters') ?? [])

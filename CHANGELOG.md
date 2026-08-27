@@ -2,7 +2,11 @@
 
 本文件记录 Pupil 的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
-## [0.5.10] - 2026-08-27
+## [0.6.0] - 2026-08-27
+
+### 新增
+- **ZCode 会话监控（zcode-rollout 适配器）**：tail `~/.zcode/cli/rollout/model-io-sess_*.jsonl` 实时会话记录——每行 model_io 是一次完成的模型请求，含全量 messages 快照与 error 字段；映射为 session_started / turn_started（按快照内累计 user 文本 prompt 计数差值判定，天然排除 tool_result 伪装的 user 消息）/ thinking 脉冲 / error，静默完成沿用 codex 的 3 分钟启发式（自愈式）。agentType 新增 `zcode`，面板标签、窗口跳转关键词、HTTP 接入白名单同步支持；附带 `tests/zcode-rollout-map.test.ts` 九个映射用例
+- **GitHub Actions 自动化**：新增 `.github/workflows/ci.yml`（push/PR → typecheck + 全量测试，ubuntu 快速反馈）与 `release.yml`（推送 `v*` 标签 → windows-latest 打包 nsis+portable 并经 electron-builder `--publish always` 自动发布 Release，含 latest.yml/blockmap）；package.json 补 `repository` 字段供 builder 定位目标仓库。此后发版 = push 标签一步
 
 ### 修复
 - **下载更新的进度条从未真正显示过**（v0.5.5 引入即存在）：IPC 处理器把整个下载流程 await 到底（88MB 走完才返回），期间渲染端拿到的 status 一直停在 available，「downloading 才启动」的 500ms 轮询条件永不满足，进度条与百分比因而全程不可见；改为 `Updater.startDownload()` 即时返回 downloading 快照并把下载转入后台执行（守卫段与首次 setResult 均在返回前同步完成，无竞态），渲染端沿用既有轮询循环实时刷新
