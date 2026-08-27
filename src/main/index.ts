@@ -19,10 +19,18 @@ import { Updater } from './updater'
 import { IPC } from '../shared/ipc-channels'
 import { sessionKey } from '../shared/events'
 
-// 轻量常驻工具：关闭硬件加速（软件渲染足够，避免 VM/沙箱/RDP 下 GPU 进程崩溃）
-app.disableHardwareAcceleration()
-// 受限环境（CI/沙箱/无特权进程）下 Chromium 进程沙箱初始化失败会导致 GPU 进程连环崩溃
-app.commandLine.appendSwitch('no-sandbox')
+// 轻量常驻工具：受限环境（CI/沙箱/无特权进程）下 GPU 进程易崩、Chromium 沙箱初始化失败——
+// 仅在这些环境关闭硬件加速与沙箱；普通桌面保留硬件加速（悬浮球更快出现、渲染更流畅）
+const restrictedEnv =
+  process.env.PUPIL_SOFTWARE_RENDER === '1' ||
+  process.env.DSH_SANDBOX === '1' ||
+  process.env.CI === 'true' ||
+  process.env.WORKBUDDY !== undefined ||
+  process.env.ELECTRON_RUN_AS_NODE !== undefined
+if (restrictedEnv) {
+  app.disableHardwareAcceleration()
+  app.commandLine.appendSwitch('no-sandbox')
+}
 
 // 单实例锁（防多开）
 const gotLock = app.requestSingleInstanceLock()

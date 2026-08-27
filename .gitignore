@@ -6,5 +6,8 @@ dist/
 resources/sounds/*.mp3
 .vite/
 
+# 运行时数据（开发时 dataDir 回退到 .config 时不应入库）
+.config/
+
 # electron-builder 产出
 release/

@@ -8,6 +8,14 @@
 - **DSH（DeepSeek Harness）适配器**：不再解析 zstd 压缩会话日志，直接轮询 DSH Web API `POST /api/session.list`（默认 `127.0.0.1:3080`，可用 `DSH_API_BASE`/`DSH_WEB_URL` 覆盖），把宿主侧权威 `running` 状态映射为 Pupil 事件——此前 DSH/自研 Harness 跑着任务面板却显示「未检测到运行中的 Agent 会话」，根因是 Pupil 没有识别 DSH 的数据源；现在新发现运行中会话会立即变蓝（`session_started` + `turn_started`），停下变 `turn_completed`，运行中每 30s heartbeat 续期，标题经 `projections.values.title` 同步到面板，设置面板新增「DSH（Web API）」开关
 - **内置更新检查（GitHub Releases）**：设置面板新增「更新」区——显示当前版本、一键「检查更新」；打包版启动 15s 后自动检查一次，发现新版本弹系统通知；面板可下载安装包并自动打开安装向导。数据源为 `github.com/xuxuyouxiu/Pupil` 的 latest release，NSIS 安装版优先、portable 兜底；开发模式（非打包）不发起网络检查
 
+## [0.5.7] - 2026-08-27
+
+### 修复
+- **点“下载更新”还是很卡**：学习 PodMuse whisper-downloader 的范式——先并行 HEAD 探测 GitHub 直连与三个镜像（各 5s），选最快可达源直接下载，不再傻等直连卡 60 秒才切镜像；下载改为流式写盘 + 背压（磁盘慢时暂停读取），进度照常每秒刷新
+
+### 变更
+- **启动更快**：普通桌面恢复硬件加速（仅 CI/沙箱/受限环境才关闭），并改为页面加载完成即显示悬浮球（ready-to-show 作兜底），减少“打开后等几秒球才出来”的等待
+
 ## [0.5.6] - 2026-08-27
 
 ### 新增

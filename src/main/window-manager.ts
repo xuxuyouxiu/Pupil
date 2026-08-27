@@ -66,7 +66,16 @@ export class WindowManager {
 
     this.loadRenderer(win, 'ball/index.html')
 
-    win.once('ready-to-show', () => win.show())
+    // 更快显示：页面加载完成即显示，ready-to-show（等首个绘制帧）作为兜底——
+    // 普通桌面开启硬件加速后首帧很快，提前显示可省下等待时间
+    let ballShown = false
+    const showBall = (): void => {
+      if (ballShown || win.isDestroyed()) return
+      ballShown = true
+      win.show()
+    }
+    win.once('ready-to-show', showBall)
+    win.webContents.once('did-finish-load', () => setTimeout(showBall, 0))
     // 拖动后记忆位置（节流：moved 事件已足够低频）
     win.on('moved', () => {
       const pos = win.getPosition()

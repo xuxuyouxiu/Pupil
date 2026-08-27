@@ -6,7 +6,7 @@
  * 说明：NSIS 安装版优先，portable 兜底；开发模式（非打包）不做网络检查。
  */
 import { app, Notification, shell } from 'electron'
-import { promises as fsp } from 'node:fs'
+import { createWriteStream, promises as fsp } from 'node:fs'
 import { join } from 'node:path'
 import { UpdateCheckResult } from '../shared/ipc-channels'
 import { downloadMirrors, GitHubRelease, isNewerVersion, parseGitHubRelease } from './update-core'
@@ -17,6 +17,78 @@ const RELEASE_API = `https://api.github.com/repos/${OWNER}/${REPO}/releases/late
 const CHECK_TIMEOUT_MS = 10_000
 /** 单个下载源（直连/镜像）的尝试超时；超时自动切下一个镜像 */
 const DOWNLOAD_ATTEMPT_TIMEOUT_MS = 60_000
+/** 并行探测下载源是否可达的时间窗口 */
+const PROBE_TIMEOUT_MS = 5_000
+
+/** HEAD 探测候选源可用性并测速；失败/超时返回 null */
+async function probeSource(url: string): Promise<{ url: string; ms: number } | null> {
+  const started = Date.now()
+  try {
+    const res = await fetch(url, {
+      method: 'HEAD',
+      redirect: 'follow',
+      signal: AbortSignal.timeout(PROBE_TIMEOUT_MS)
+    })
+    if (!res.ok) return null
+    return { url, ms: Date.now() - started }
+  } catch {
+    return null
+  }
+}
+
+/** 流式写入 + 背压（磁盘慢时暂停读网络），避免 88MB 全堆内存；失败清理 .downloading */
+async function downloadBinaryWithProgress(
+  url: string,
+  savePath: string,
+  timeoutMs: number,
+  onProgress: (pct: number) => void
+): Promise<void> {
+  const res = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(timeoutMs) })
+  if (!res.ok || !res.body) throw new Error(`download HTTP ${res.status}`)
+  const total = Number(res.headers.get('content-length')) || 0
+  const tmp = `${savePath}.downloading`
+  const writer = createWriteStream(tmp)
+  const reader = res.body.getReader()
+  let downloaded = 0
+  let writerError: Error | null = null
+  writer.on('error', (e: Error) => {
+    writerError = e
+  })
+
+  const writeChunk = async (chunk: Uint8Array): Promise<void> => {
+    if (writerError) throw writerError
+    if (writer.write(chunk)) return
+    await new Promise<void>((resolve, reject) => {
+      writer.once('drain', resolve)
+      writer.once('error', reject)
+    })
+  }
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      await writeChunk(value)
+      downloaded += value.length
+      if (total > 0) onProgress(Math.min(99, Math.round((downloaded / total) * 100)))
+    }
+    await new Promise<void>((resolve, reject) => {
+      if (writerError) {
+        reject(writerError)
+        return
+      }
+      writer.once('error', reject)
+      writer.once('finish', resolve)
+      writer.end()
+    })
+  } catch (e) {
+    writer.destroy()
+    await fsp.unlink(tmp).catch(() => undefined)
+    throw e
+  }
+  await fsp.rm(savePath, { force: true }).catch(() => undefined)
+  await fsp.rename(tmp, savePath)
+}
 
 export class Updater {
   private result: UpdateCheckResult
@@ -90,7 +162,7 @@ export class Updater {
     if (this.result.releaseUrl) void shell.openExternal(this.result.releaseUrl)
   }
 
-  /** 下载最新安装包并打开（用户手动触发）；带进度上报与镜像回退 */
+  /** 下载最新安装包并打开（用户手动触发）；先并行探测最快源，再流式下到文件 */
   async downloadAndOpen(): Promise<UpdateCheckResult> {
     if (this.result.status !== 'available' || !this.result.assetUrl) return this.result
     const assetUrl = this.result.assetUrl
@@ -98,38 +170,31 @@ export class Updater {
     const dest = join(app.getPath('temp'), assetName)
     this.setResult({ ...this.result, status: 'downloading', progress: 0 })
 
-    for (const url of downloadMirrors(assetUrl)) {
+    // 并行 HEAD 测速所有候选源，选最快可达的（避免直连卡 60s 才切镜像）
+    const candidates = downloadMirrors(assetUrl)
+    const probes = await Promise.all(candidates.map((url) => probeSource(url)))
+    const reachable = probes
+      .filter((p): p is { url: string; ms: number } => p !== null)
+      .sort((a, b) => a.ms - b.ms)
+    const ordered = [
+      ...reachable.map((p) => p.url),
+      ...candidates.filter((url) => !reachable.some((p) => p.url === url))
+    ]
+
+    for (const url of ordered) {
       try {
-        const res = await fetch(url, {
-          signal: AbortSignal.timeout(DOWNLOAD_ATTEMPT_TIMEOUT_MS),
-          redirect: 'follow'
-        })
-        if (!res.ok || !res.body) throw new Error(`download HTTP ${res.status}`)
-        const total = Number(res.headers.get('content-length') ?? 0)
-        const reader = res.body.getReader()
-        const chunks: Buffer[] = []
-        let received = 0
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-          chunks.push(Buffer.from(value))
-          received += value.length
-          if (total > 0) {
-            this.setResult({
-              ...this.result,
-              status: 'downloading',
-              progress: Math.min(99, Math.round((received / total) * 100))
-            })
-          }
-        }
-        const data = Buffer.concat(chunks)
-        await fsp.writeFile(dest, data)
+        await downloadBinaryWithProgress(
+          url,
+          dest,
+          DOWNLOAD_ATTEMPT_TIMEOUT_MS,
+          (pct) => this.setResult({ ...this.result, status: 'downloading', progress: pct })
+        )
         this.setResult({ ...this.result, status: 'downloaded', progress: 100, assetUrl: undefined })
         // 打开安装器，用户按向导完成升级；安装后即可体验新版本
         await shell.openPath(dest)
         return this.result
       } catch (error) {
-        console.warn('[updater] download failed, trying mirror:', url, error instanceof Error ? error.message : error)
+        console.warn('[updater] download failed, trying next:', url, error instanceof Error ? error.message : error)
       }
     }
 
