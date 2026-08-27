@@ -16,11 +16,12 @@
  * net.fetch 与系统代理行为一致，代理开启即自动生效；app 未就绪时兜底回退 Node fetch。
  */
 import { app, Notification, net, shell } from 'electron'
-import { createReadStream, promises as fsp, writeFileSync } from 'node:fs'
+import { createReadStream, promises as fsp, writeFileSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { createHash } from 'node:crypto'
 import { spawn } from 'node:child_process'
 import { UpdateCheckResult } from '../shared/ipc-channels'
+import { dataDir } from '../adapters/http-ingest/auth'
 import {
   cdnAssetUrl,
   downloadMirrors,
@@ -36,6 +37,21 @@ import {
 function httpFetch(url: string, init?: RequestInit): Promise<Response> {
   if (app.isReady()) return net.fetch(url, init)
   return fetch(url, init)
+}
+
+/**
+ * v0.8.3 直连兜底：Clash 退出但"系统代理"开关还开着（指向已死端口）时，
+ * Chromium 所有请求全挂——连国内 CDN 都救不回来（用户实测复现的顽固"检查失败"）。
+ * 对策：常规（跟随系统代理）两条通道全失败后，把默认会话切到 direct 模式重试一遍；
+ * 成功则本会话内记住直连模式（下载阶段沿用），下次检查仍先试系统代理。
+ */
+async function setNetworkMode(mode: 'system' | 'direct'): Promise<void> {
+  try {
+    const { session } = await import('electron')
+    await session.defaultSession.setProxy(mode === 'direct' ? { mode: 'direct' } : { mode: 'system' })
+  } catch {
+    /* setProxy 失败不阻断：维持现状继续尝试 */
+  }
 }
 
 const OWNER = 'xuxuyouxiu'
@@ -278,9 +294,9 @@ export class Updater {
   }
 
   /** 检查更新。manual=true 是用户手动点击（不弹系统通知）。
-   *  v0.8.2 版本探测改三级策略（与 PodMuse 官网同款）：
-   *  ① GitHub API（有代理/海外最快）② CDN 固定路径 latest.yml（国内直连可达，GitHub 挂了也能发现新版本）
-   *  ③ 全部失败才报错（附两条通道各自的原因） */
+   *  v0.8.3 两轮模式：先跟随系统代理跑两条通道（GitHub API → CDN latest.yml），
+   *  全部失败自动切 direct 直连重试一轮（治「Clash 退出但系统代理开关还开着」的
+   *  全挂场景）；每轮结果追加写入 update-check.log，复现性问题可事后取证。 */
   async check(manual = false): Promise<UpdateCheckResult> {
     if (!app.isPackaged) {
       this.result = { status: 'dev', currentVersion: app.getVersion() }
@@ -289,90 +305,158 @@ export class Updater {
     if (this.checking) return this.result
     this.checking = true
     const current = app.getVersion()
+    const log: string[] = [`check v${current} manual=${manual}`]
     try {
       this.result = { status: 'checking', currentVersion: current }
 
-      // ---- 通道 ①：GitHub API ----
-      let ghError = ''
-      try {
-        const res = await httpFetch(RELEASE_API, {
-          headers: {
-            'user-agent': 'pupil-updater',
-            accept: 'application/vnd.github+json'
-          },
-          signal: AbortSignal.timeout(CHECK_TIMEOUT_MS)
-        })
-        if (!res.ok) throw new Error(`GitHub API HTTP ${res.status}`)
-        const release = (await res.json()) as GitHubRelease
-        const parsed = parseGitHubRelease(release)
-        if (!parsed.latestVersion || !isNewerVersion(parsed.latestVersion, current)) {
-          this.result = {
-            status: 'not-available',
-            currentVersion: current,
-            latestVersion: parsed.latestVersion || undefined,
-            releaseUrl: parsed.htmlUrl
-          }
-          return this.result
-        }
-        this.result = {
-          status: 'available',
-          currentVersion: current,
-          latestVersion: parsed.latestVersion,
-          message: parsed.message,
-          releaseUrl: parsed.htmlUrl,
-          assetUrl: parsed.asset?.browser_download_url,
-          assetName: parsed.asset?.name
-        }
-        this.assetDigest = parsed.asset?.digest
-        this.assetSha512 = undefined
-        if (!manual) this.notifyAvailable()
-        return this.result
-      } catch (e) {
-        ghError = e instanceof Error ? e.message : String(e)
-        console.warn('[updater] GitHub API check failed, falling back to CDN:', ghError)
+      // ---- 第一轮：跟随系统代理（正常路径） ----
+      await setNetworkMode('system')
+      let attempt = await this.runCheckChannels(current, manual, log)
+      if (attempt) {
+        log.push(`outcome=${attempt.status}`)
+        this.writeCheckLog(log)
+        return attempt
       }
 
-      // ---- 通道 ②：CDN latest.yml 固定路径（无版本号也能探测，鸡生蛋破解） ----
-      try {
-        const res = await httpFetch(`${OSS_CDN_BASE}/pupil/latest.yml`, {
-          headers: { 'user-agent': 'pupil-updater' },
-          signal: AbortSignal.timeout(CHECK_TIMEOUT_MS)
-        })
-        if (!res.ok) throw new Error(`CDN HTTP ${res.status}`)
-        const info = parseLatestYml(await res.text())
-        if (!info.version || !isNewerVersion(info.version, current)) {
-          // CDN 可达且无新版本：信任该结果（GitHub 挂但没新版是最常见组合）
-          this.result = { status: 'not-available', currentVersion: current, latestVersion: info.version }
-          return this.result
-        }
-        const assetName = `Pupil-${info.version}-x64.exe`
-        this.result = {
-          status: 'available',
-          currentVersion: current,
-          latestVersion: info.version,
-          message: 'CDN 镜像通道（GitHub API 暂不可达）',
-          releaseUrl: `https://github.com/${OWNER}/${REPO}/releases/tag/v${info.version}`,
-          // 保留 GitHub 直链用于镜像链构建；实测排序会优先命中同目录的 CDN 版本
-          assetUrl: `https://github.com/${OWNER}/${REPO}/releases/download/v${info.version}/${assetName}`,
-          assetName
-        }
-        this.assetDigest = undefined
-        this.assetSha512 = info.sha512
-        if (!manual) this.notifyAvailable()
-        return this.result
-      } catch (cdnErr) {
-        const cdnError = cdnErr instanceof Error ? cdnErr.message : String(cdnErr)
-        throw new Error(`GitHub: ${ghError || '未知'}；CDN: ${cdnError}`)
+      // ---- 第二轮：直连兜底（代理死但开关残留 / 瞬态坏代理） ----
+      log.push('pass2=direct-fallback')
+      await setNetworkMode('direct')
+      attempt = await this.runCheckChannels(current, manual, log)
+      if (attempt) {
+        log.push('outcome=' + attempt.status + ' (via direct)')
+        this.writeCheckLog(log)
+        return attempt
       }
+
+      // 两轮全灭：带各通道原因报错，并建议查看日志
+      const reason = this.lastChannelErrors()
+      this.result = {
+        status: 'error',
+        currentVersion: current,
+        error: `系统代理与直连两轮尝试均失败（${reason}）。日志：%APPDATA%\\pupil\\update-check.log`
+      }
+      log.push(`outcome=error ${reason}`)
+      this.writeCheckLog(log)
+      return this.result
     } catch (error) {
       this.result = {
         status: 'error',
         currentVersion: app.getVersion(),
         error: error instanceof Error ? error.message : String(error)
       }
+      log.push(`outcome=crash ${this.result.error}`)
+      this.writeCheckLog(log)
       return this.result
     } finally {
       this.checking = false
+    }
+  }
+
+  /** 跑两条检查通道（GitHub API → CDN latest.yml）。成功返回结果；双双失败返回 null 并把原因记入 lastErrors */
+  private async runCheckChannels(
+    current: string,
+    manual: boolean,
+    log: string[]
+  ): Promise<UpdateCheckResult | null> {
+    let ghError = ''
+    try {
+      const res = await httpFetch(RELEASE_API, {
+        headers: {
+          'user-agent': 'pupil-updater',
+          accept: 'application/vnd.github+json'
+        },
+        signal: AbortSignal.timeout(CHECK_TIMEOUT_MS)
+      })
+      if (!res.ok) throw new Error(`GitHub API HTTP ${res.status}`)
+      const release = (await res.json()) as GitHubRelease
+      const parsed = parseGitHubRelease(release)
+      if (!parsed.latestVersion || !isNewerVersion(parsed.latestVersion, current)) {
+        return {
+          status: 'not-available',
+          currentVersion: current,
+          latestVersion: parsed.latestVersion || undefined,
+          releaseUrl: parsed.htmlUrl
+        }
+      }
+      this.result = {
+        status: 'available',
+        currentVersion: current,
+        latestVersion: parsed.latestVersion,
+        message: parsed.message,
+        releaseUrl: parsed.htmlUrl,
+        assetUrl: parsed.asset?.browser_download_url,
+        assetName: parsed.asset?.name
+      }
+      this.assetDigest = parsed.asset?.digest
+      this.assetSha512 = undefined
+      if (!manual) this.notifyAvailable()
+      return this.result
+    } catch (e) {
+      ghError = e instanceof Error ? e.message : String(e)
+      log.push(`gh-error=${ghError.slice(0, 200)}`)
+      console.warn('[updater] GitHub API check failed:', ghError)
+    }
+
+    try {
+      const res = await httpFetch(`${OSS_CDN_BASE}/pupil/latest.yml`, {
+        headers: { 'user-agent': 'pupil-updater' },
+        signal: AbortSignal.timeout(CHECK_TIMEOUT_MS)
+      })
+      if (!res.ok) throw new Error(`CDN HTTP ${res.status}`)
+      const info = parseLatestYml(await res.text())
+      if (!info.version || !isNewerVersion(info.version, current)) {
+        // CDN 可达且无新版本：信任该结果（GitHub 挂但没新版是最常见组合）
+        return { status: 'not-available', currentVersion: current, latestVersion: info.version }
+      }
+      const assetName = `Pupil-${info.version}-x64.exe`
+      this.result = {
+        status: 'available',
+        currentVersion: current,
+        latestVersion: info.version,
+        message: 'CDN 镜像通道（GitHub API 暂不可达）',
+        releaseUrl: `https://github.com/${OWNER}/${REPO}/releases/tag/v${info.version}`,
+        // 保留 GitHub 直链用于镜像链构建；实测排序会优先命中同目录的 CDN 版本
+        assetUrl: `https://github.com/${OWNER}/${REPO}/releases/download/v${info.version}/${assetName}`,
+        assetName
+      }
+      this.assetDigest = undefined
+      this.assetSha512 = info.sha512
+      if (!manual) this.notifyAvailable()
+      return this.result
+    } catch (e) {
+      const cdnError = e instanceof Error ? e.message : String(e)
+      log.push(`cdn-error=${cdnError.slice(0, 200)}`)
+      this.lastCdnError = cdnError
+      this.lastGhError = ghError
+      return null
+    }
+  }
+
+  private lastGhError = ''
+  private lastCdnError = ''
+
+  private lastChannelErrors(): string {
+    return `GitHub: ${this.lastGhError || '未知'}; CDN: ${this.lastCdnError || '未知'}`
+  }
+
+  /** 追加一行检查日志到 %APPDATA%/pupil/update-check.log（超 128KB 直接重开），失败静默 */
+  private writeCheckLog(lines: string[]): void {
+    try {
+      const file = join(dataDir(), 'update-check.log')
+      let prev = ''
+      try {
+        if (statSync(file).size <= 128 * 1024) prev = readFileSync(file, 'utf8')
+      } catch {
+        /* 首次无文件 */
+      }
+      const sep = prev && !prev.endsWith('\n') ? '\n' : ''
+      writeFileSync(
+        file,
+        `${prev}${sep}[${new Date().toISOString()}] ${lines.join(' | ')}\n`,
+        'utf8'
+      )
+    } catch {
+      /* 日志失败不影响主流程 */
     }
   }
 

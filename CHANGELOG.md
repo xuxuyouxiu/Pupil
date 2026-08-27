@@ -2,6 +2,13 @@
 
 本文件记录 Pupil 的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.8.3] - 2026-08-27
+
+### 新增
+- **检查失败自动切直连重试**：两轮模式——第一轮跟随系统代理（GitHub API → CDN latest.yml），全部失败自动把默认会话切到 direct 直连再跑一轮，治「Clash 已退出但系统代理开关还残留指向死端口」导致的全挂场景；第二轮成功后本会话的下载也沿用直连
+- **检查过程可取证**：每次检查的结果与各通道错误原因追加写入 `%APPDATA%\pupil\update-check.log`（超 128KB 自动重开），「为什么检查失败」从此有实锤可查
+- 附诊断脚本 `scripts/diag-update-check.js`：`npx electron scripts/diag-update-check.js` 可在任意时刻用与应用完全相同的网络栈复现两条通道的真实状态
+
 ## [0.8.2] - 2026-08-27
 
 ### 修复
