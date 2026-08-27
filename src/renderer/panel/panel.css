@@ -567,3 +567,26 @@ body,
   font-size: 11px;
   opacity: 0.75;
 }
+
+/* 更新下载进度条（设置面板） */
+.update-progress {
+  margin-top: 8px;
+}
+.update-progress-track {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--surface-warm);
+  overflow: hidden;
+}
+.update-progress-fill {
+  height: 100%;
+  border-radius: 4px;
+  background: var(--accent);
+  transition: width 0.2s ease;
+}
+.update-progress-text {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--muted);
+}

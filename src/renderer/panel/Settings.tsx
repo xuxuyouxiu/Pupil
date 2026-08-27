@@ -24,7 +24,7 @@ function updateDesc(u: UpdateCheckResult | null): string {
     case 'available':
       return `发现 v${u.latestVersion ?? ''}，可点击下载更新`
     case 'downloading':
-      return '正在下载安装包…'
+      return u.progress != null ? `正在下载安装包… ${u.progress}%` : '正在尝试下载源…'
     case 'downloaded':
       return '安装包已下载，请完成安装'
     case 'not-available':
@@ -69,6 +69,15 @@ export function Settings({ onBack }: Props) {
   useEffect(() => {
     void reload()
   }, [reload])
+
+  // 下载进行中：轮询主进程拿实时进度（88MB 下载期间不能一直停在“处理中…”）
+  useEffect(() => {
+    if (update?.status !== 'downloading') return
+    const timer = setInterval(() => {
+      void window.pupil.getUpdateStatus().then(setUpdate).catch(() => undefined)
+    }, 500)
+    return () => clearInterval(timer)
+  }, [update?.status])
 
   const toggleDnd = async (): Promise<void> => {
     if (!snap) return
@@ -321,9 +330,22 @@ export function Settings({ onBack }: Props) {
                   disabled={updateBusy}
                   onClick={() => void checkUpdate()}
                 >
-                  {updateBusy ? '处理中…' : '检查更新'}
+                  {updateBusy ? (update?.status === 'downloading' ? '下载中…' : '处理中…') : '检查更新'}
                 </button>
               </div>
+              {update?.status === 'downloading' && (
+                <div className="update-progress">
+                  <div className="update-progress-track">
+                    <div
+                      className="update-progress-fill"
+                      style={{ width: `${update.progress ?? 2}%` }}
+                    />
+                  </div>
+                  <span className="update-progress-text">
+                    {update.progress != null ? `已下载 ${update.progress}%` : '正在连接下载源…'}
+                  </span>
+                </div>
+              )}
               {update?.status === 'available' && (
                 <div className="setting-row">
                   <div className="setting-info">

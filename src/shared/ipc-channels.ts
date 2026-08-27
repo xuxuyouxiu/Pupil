@@ -41,6 +41,8 @@ export type UpdateStatus =
 /** 更新检查结果（main -> renderer） */
 export interface UpdateCheckResult {
   status: UpdateStatus
+  /** 下载进度 0-100（仅 status='downloading' 时有意义） */
+  progress?: number
   currentVersion: string
   latestVersion?: string
   /** 发布说明（release.name / body 摘要） */
@@ -67,6 +69,8 @@ export const IPC = {
 
   /** renderer -> 主进程：检查更新（返回 UpdateCheckResult） */
   updateCheck: 'pupil:update:check',
+  /** renderer -> 主进程：查询当前更新状态（含下载进度） */
+  updateStatus: 'pupil:update:status',
   /** renderer -> 主进程：下载并打开最新安装包 */
   updateDownload: 'pupil:update:download',
   /** renderer -> 主进程：在浏览器打开 GitHub Release 页 */

@@ -87,6 +87,19 @@ export function parseGitHubRelease(release: GitHubRelease | null | undefined): {
   }
 }
 
+/**
+ * GitHub 下载镜像回退链（国内直连 github.com 常慢/不通）：
+ * 直连 -> ghfast.top -> gh-proxy.com -> mirror.ghproxy.com
+ */
+export function downloadMirrors(url: string): string[] {
+  return [
+    url,
+    `https://ghfast.top/${url}`,
+    `https://gh-proxy.com/${url}`,
+    `https://mirror.ghproxy.com/${url}`
+  ]
+}
+
 /** 组合成一个 UpdateCheckResult（不包含网络请求的副作用） */
 export function buildUpdateResult(
   partial: Pick<UpdateCheckResult, 'currentVersion'> & Partial<UpdateCheckResult>

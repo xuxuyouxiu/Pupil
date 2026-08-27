@@ -145,6 +145,7 @@ function bootstrap(): void {
     core.setAdapterEnabled(id, enabled)
   )
   ipcMain.handle(IPC.updateCheck, () => updater.check(true))
+  ipcMain.handle(IPC.updateStatus, () => updater.current)
   ipcMain.handle(IPC.updateDownload, () => updater.downloadAndOpen())
   ipcMain.handle(IPC.updateOpenPage, () => {
     updater.openReleasePage()

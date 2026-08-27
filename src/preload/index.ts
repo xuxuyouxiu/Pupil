@@ -44,6 +44,8 @@ export interface PupilApi {
   getHistory(limit?: number): Promise<SessionHistoryItem[]>
   /** 检查更新（GitHub Releases） */
   checkUpdate(): Promise<UpdateCheckResult>
+  /** 查询当前更新状态（含下载进度） */
+  getUpdateStatus(): Promise<UpdateCheckResult>
   /** 下载最新安装包并打开 */
   downloadUpdate(): Promise<UpdateCheckResult>
   /** 在浏览器打开 GitHub 发布页 */
@@ -84,6 +86,7 @@ const api: PupilApi = {
   setSettings: (patch) => ipcRenderer.invoke(IPC.settingsSet, patch),
   setAdapterEnabled: (id, enabled) => ipcRenderer.invoke(IPC.adapterSetEnabled, id, enabled),
   checkUpdate: () => ipcRenderer.invoke(IPC.updateCheck),
+  getUpdateStatus: () => ipcRenderer.invoke(IPC.updateStatus),
   downloadUpdate: () => ipcRenderer.invoke(IPC.updateDownload),
   openUpdatePage: () => ipcRenderer.invoke(IPC.updateOpenPage),
   installHooks: () => ipcRenderer.invoke(IPC.hooksInstall),

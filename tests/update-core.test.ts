@@ -4,6 +4,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   compareVersions,
+  downloadMirrors,
   isNewerVersion,
   normalizeVersion,
   parseGitHubRelease,
@@ -53,6 +54,17 @@ describe('pickUpdateAsset', () => {
     expect(pickUpdateAsset([{ name: 'latest.yml', browser_download_url: 'x' }])).toBeUndefined()
     expect(pickUpdateAsset([])).toBeUndefined()
     expect(pickUpdateAsset(undefined)).toBeUndefined()
+  })
+})
+
+describe('downloadMirrors', () => {
+  it('直连在前，镜像依次回退', () => {
+    const url = 'https://github.com/xuxuyouxiu/Pupil/releases/download/v0.5.4/Pupil-0.5.4-x64.exe'
+    const mirrors = downloadMirrors(url)
+    expect(mirrors[0]).toBe(url)
+    expect(mirrors[1]).toBe(`https://ghfast.top/${url}`)
+    expect(mirrors[2]).toBe(`https://gh-proxy.com/${url}`)
+    expect(mirrors[3]).toBe(`https://mirror.ghproxy.com/${url}`)
   })
 })
 
