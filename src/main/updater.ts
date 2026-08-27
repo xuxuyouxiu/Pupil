@@ -20,6 +20,7 @@ import { createReadStream, promises as fsp, writeFileSync, readFileSync, statSyn
 import { join } from 'node:path'
 import { createHash } from 'node:crypto'
 import { spawn } from 'node:child_process'
+import * as nodeNet from 'node:net'
 import { UpdateCheckResult } from '../shared/ipc-channels'
 import { dataDir } from '../adapters/http-ingest/auth'
 import {
@@ -51,6 +52,51 @@ async function setNetworkMode(mode: 'system' | 'direct'): Promise<void> {
     await session.defaultSession.setProxy(mode === 'direct' ? { mode: 'direct' } : { mode: 'system' })
   } catch {
     /* setProxy 失败不阻断：维持现状继续尝试 */
+  }
+}
+
+/**
+ * v0.8.4 代理预检：问 Chromium「这次请求会走哪个代理」，再对代理端口做一次真实 TCP 连接测试。
+ * 代理软件退出/重启中而系统开关残留的场景下，直接跳过注定失败的轮次改用直连——
+ * 省掉两轮各 10 秒的无效等待，并把「代理端口不通」这一结论写进日志与错误提示。
+ */
+async function proxyPreflight(log: string[]): Promise<'system' | 'direct'> {
+  try {
+    const { session } = await import('electron')
+    const info = await Promise.race([
+      session.defaultSession.resolveProxy('https://api.github.com/'),
+      new Promise<string>((_, rej) => setTimeout(() => rej(new Error('resolveProxy timeout')), 2000))
+    ])
+    const m = info.match(/(?:PROXY|HTTPS|SOCKS5?)\s+([^;\s]+)/i)
+    if (!m) return 'system' // DIRECT：无需预检
+    const hostPort = m[1]
+    const idx = hostPort.lastIndexOf(':')
+    if (idx <= 0) return 'system'
+    const host = hostPort.slice(0, idx)
+    const port = Number(hostPort.slice(idx + 1))
+    if (!Number.isFinite(port)) return 'system'
+
+    const alive = await new Promise<boolean>((resolve) => {
+      const s = nodeNet.createConnection({ host, port })
+      s.setTimeout(1500, () => {
+        s.destroy()
+        resolve(false)
+      })
+      s.once('connect', () => {
+        s.destroy()
+        resolve(true)
+      })
+      s.once('error', () => resolve(false))
+    })
+    if (!alive) {
+      log.push(`preflight: system proxy ${hostPort} unreachable -> force direct`)
+      await setNetworkMode('direct')
+      return 'direct'
+    }
+    log.push(`preflight: system proxy ${hostPort} alive`)
+    return 'system'
+  } catch {
+    return 'system'
   }
 }
 
@@ -309,31 +355,36 @@ export class Updater {
     try {
       this.result = { status: 'checking', currentVersion: current }
 
-      // ---- 第一轮：跟随系统代理（正常路径） ----
-      await setNetworkMode('system')
+      // ---- v0.8.4 代理预检：系统代理端口死了就直接走直连，不浪费两轮等待 ----
+      const route = await proxyPreflight(log)
       let attempt = await this.runCheckChannels(current, manual, log)
       if (attempt) {
-        log.push(`outcome=${attempt.status}`)
+        log.push(`outcome=${attempt.status}${route === 'direct' ? ' (direct)' : ''}`)
         this.writeCheckLog(log)
         return attempt
       }
 
-      // ---- 第二轮：直连兜底（代理死但开关残留 / 瞬态坏代理） ----
-      log.push('pass2=direct-fallback')
-      await setNetworkMode('direct')
-      attempt = await this.runCheckChannels(current, manual, log)
-      if (attempt) {
-        log.push('outcome=' + attempt.status + ' (via direct)')
-        this.writeCheckLog(log)
-        return attempt
+      // ---- 直连兜底：仅当第一轮确实走过系统代理时才值得重试 ----
+      if (route === 'system') {
+        log.push('pass2=direct-fallback')
+        await setNetworkMode('direct')
+        attempt = await this.runCheckChannels(current, manual, log)
+        if (attempt) {
+          log.push('outcome=' + attempt.status + ' (via direct)')
+          this.writeCheckLog(log)
+          return attempt
+        }
       }
 
-      // 两轮全灭：带各通道原因报错，并建议查看日志
+      // 两轮全灭：按预检结论给出人话建议
       const reason = this.lastChannelErrors()
       this.result = {
         status: 'error',
         currentVersion: current,
-        error: `系统代理与直连两轮尝试均失败（${reason}）。日志：%APPDATA%\\pupil\\update-check.log`
+        error:
+          route === 'direct'
+            ? '检测到你的系统代理指向的端口没有响应，已自动改用直连但仍然失败——请检查本机网络连通性，或在代理软件中关闭 TUN/虚拟网卡模式后重试。详情见 %APPDATA%\\pupil\\update-check.log'
+            : `系统代理与直连两轮尝试均失败（${reason}）。日志：%APPDATA%\\pupil\\update-check.log`
       }
       log.push(`outcome=error ${reason}`)
       this.writeCheckLog(log)
