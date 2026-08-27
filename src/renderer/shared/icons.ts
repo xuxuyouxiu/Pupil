@@ -19,5 +19,6 @@ export {
   ChevronRight,
   BellRing, // 重试提醒
   WifiOff, // 断连
-  Rocket // 开机自启
+  Rocket, // 开机自启
+  Download // 更新下载
 } from 'lucide-react'

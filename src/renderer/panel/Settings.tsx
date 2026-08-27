@@ -3,8 +3,8 @@
  * 分区：通知（勿扰/静音/音色包/音量）/ 数据接入（adapter 开关）/ Claude Code Hooks 管理
  */
 import React, { useCallback, useEffect, useState } from 'react'
-import { SettingsSnapshot } from '../../shared/ipc-channels'
-import { Moon, VolumeX, ChevronRight, X, Rocket, Music, Volume2 } from '../shared/icons'
+import { SettingsSnapshot, UpdateCheckResult } from '../../shared/ipc-channels'
+import { Moon, VolumeX, ChevronRight, X, Rocket, Music, Volume2, Download } from '../shared/icons'
 import { listSoundPacks, setSoundConfig, playSound } from '../ball/sound'
 
 interface Props {
@@ -13,6 +13,28 @@ interface Props {
 
 /** 音色包选项（与 sound.ts PACKS 一致） */
 const SOUND_PACKS = listSoundPacks()
+
+/** 更新状态说明文案 */
+function updateDesc(u: UpdateCheckResult | null): string {
+  if (!u || u.status === 'disabled') return '启动后自动检查 GitHub Releases'
+  if (u.status === 'dev') return '开发模式不检查更新'
+  switch (u.status) {
+    case 'checking':
+      return '正在检查最新版本…'
+    case 'available':
+      return `发现 v${u.latestVersion ?? ''}，可点击下载更新`
+    case 'downloading':
+      return '正在下载安装包…'
+    case 'downloaded':
+      return '安装包已下载，请完成安装'
+    case 'not-available':
+      return '已是最新版本'
+    case 'error':
+      return `检查失败：${u.error ?? '未知错误'}`
+    default:
+      return ''
+  }
+}
 
 /** 音色试听用事件音（切换包/拖滑块时播一次） */
 const PREVIEW_SOUND = 'done' as const
@@ -35,6 +57,8 @@ function Toggle({ on, onChange, disabled }: { on: boolean; onChange: () => void;
 export function Settings({ onBack }: Props) {
   const [snap, setSnap] = useState<SettingsSnapshot | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
+  const [update, setUpdate] = useState<UpdateCheckResult | null>(null)
+  const [updateBusy, setUpdateBusy] = useState(false)
   /** 拖动中的临时音量（未提交）；null = 显示已保存值 */
   const [localVolume, setLocalVolume] = useState<number | null>(null)
 
@@ -93,6 +117,24 @@ export function Settings({ onBack }: Props) {
       await reload()
     } finally {
       setBusy(null)
+    }
+  }
+
+  const checkUpdate = async (): Promise<void> => {
+    setUpdateBusy(true)
+    try {
+      setUpdate(await window.pupil.checkUpdate())
+    } finally {
+      setUpdateBusy(false)
+    }
+  }
+
+  const downloadUpdate = async (): Promise<void> => {
+    setUpdateBusy(true)
+    try {
+      setUpdate(await window.pupil.downloadUpdate())
+    } finally {
+      setUpdateBusy(false)
     }
   }
 
@@ -261,6 +303,50 @@ export function Settings({ onBack }: Props) {
                   {busy === 'hooks' ? '处理中…' : snap.hooksInstalled ? '卸载' : '安装'}
                 </button>
               </div>
+            </section>
+
+            {/* 更新 */}
+            <section className="settings-section">
+              <h3 className="settings-heading">更新</h3>
+              <div className="setting-row">
+                <div className="setting-info">
+                  <Download size={16} />
+                  <div>
+                    <div className="setting-name">当前版本 v{snap.version}</div>
+                    <div className="setting-desc">{updateDesc(update)}</div>
+                  </div>
+                </div>
+                <button
+                  className="hooks-btn"
+                  disabled={updateBusy}
+                  onClick={() => void checkUpdate()}
+                >
+                  {updateBusy ? '处理中…' : '检查更新'}
+                </button>
+              </div>
+              {update?.status === 'available' && (
+                <div className="setting-row">
+                  <div className="setting-info">
+                    <div>
+                      <div className="setting-name">发现新版本 v{update.latestVersion}</div>
+                      <div className="setting-desc">下载完成后自动打开安装向导</div>
+                    </div>
+                  </div>
+                  <button className="hooks-btn" disabled={updateBusy} onClick={() => void downloadUpdate()}>
+                    下载更新
+                  </button>
+                </div>
+              )}
+              {update?.status === 'available' && (
+                <div className="setting-row">
+                  <button
+                    className="hooks-btn"
+                    onClick={() => void window.pupil.openUpdatePage()}
+                  >
+                    在 GitHub 打开发布页
+                  </button>
+                </div>
+              )}
             </section>
           </>
         )}

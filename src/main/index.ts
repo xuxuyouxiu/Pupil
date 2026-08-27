@@ -13,6 +13,7 @@ import { AutoLaunch } from './auto-launch'
 import { ensureCliShim, ensureCliOnPath } from './paths'
 import { FileHistoryStore } from './history-store'
 import { activateSessionWindow } from '../integrations/win32-window'
+import { Updater } from './updater'
 import { IPC } from '../shared/ipc-channels'
 import { sessionKey } from '../shared/events'
 
@@ -31,7 +32,8 @@ if (!gotLock) {
 
 function bootstrap(): void {
   const config = new ConfigStore()
-  const core = new MonitoringCore(config)
+  const core = new MonitoringCore(config, app.getVersion())
+  const updater = new Updater()
   const windows = new WindowManager(config)
   const notifier = new Notifier(() => windows.ballWindow, config)
   const tray = new TrayManager(core, windows)
@@ -142,6 +144,12 @@ function bootstrap(): void {
   ipcMain.handle(IPC.adapterSetEnabled, (_e, id: string, enabled: boolean) =>
     core.setAdapterEnabled(id, enabled)
   )
+  ipcMain.handle(IPC.updateCheck, () => updater.check(true))
+  ipcMain.handle(IPC.updateDownload, () => updater.downloadAndOpen())
+  ipcMain.handle(IPC.updateOpenPage, () => {
+    updater.openReleasePage()
+    return true
+  })
   ipcMain.handle(IPC.hooksInstall, () => core.installHooks())
   ipcMain.handle(IPC.hooksUninstall, () => core.uninstallHooks())
   // 独立设置窗口（P1-2）：面板内「查看接入指引」/ 设置按钮的升级入口
@@ -164,6 +172,8 @@ function bootstrap(): void {
     gaze.start()
     tray.create()
     core.start()
+    // 启动 15s 后自动检查一次更新（dev/非打包由 Updater 内部跳过）
+    setTimeout(() => void updater.check(false), 15_000)
     // 打包版：写 %LOCALAPPDATA%/Pupil/bin/pupil.cmd（pupil send 命令，无需系统 Node）
     const binDir = ensureCliShim()
     if (binDir) {

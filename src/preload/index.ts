@@ -3,7 +3,7 @@
  */
 import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron'
 import { SessionView, SessionHistoryItem } from '../shared/events'
-import { IPC, SettingsSnapshot } from '../shared/ipc-channels'
+import { IPC, SettingsSnapshot, UpdateCheckResult } from '../shared/ipc-channels'
 
 export interface PupilApi {
   /** 拉取全量会话快照 */
@@ -42,6 +42,12 @@ export interface PupilApi {
   uninstallHooks(): Promise<boolean>
   /** 事件历史页签：跨会话合并时间线（时间倒序） */
   getHistory(limit?: number): Promise<SessionHistoryItem[]>
+  /** 检查更新（GitHub Releases） */
+  checkUpdate(): Promise<UpdateCheckResult>
+  /** 下载最新安装包并打开 */
+  downloadUpdate(): Promise<UpdateCheckResult>
+  /** 在浏览器打开 GitHub 发布页 */
+  openUpdatePage(): Promise<boolean>
   /** 同步面板视图模式：设置视图下主进程不因失焦自动收起面板 */
   setPanelMode(mode: 'main' | 'settings'): void
   /** 退出应用 */
@@ -79,6 +85,9 @@ const api: PupilApi = {
   getSettings: () => ipcRenderer.invoke(IPC.settingsGet),
   setSettings: (patch) => ipcRenderer.invoke(IPC.settingsSet, patch),
   setAdapterEnabled: (id, enabled) => ipcRenderer.invoke(IPC.adapterSetEnabled, id, enabled),
+  checkUpdate: () => ipcRenderer.invoke(IPC.updateCheck),
+  downloadUpdate: () => ipcRenderer.invoke(IPC.updateDownload),
+  openUpdatePage: () => ipcRenderer.invoke(IPC.updateOpenPage),
   installHooks: () => ipcRenderer.invoke(IPC.hooksInstall),
   uninstallHooks: () => ipcRenderer.invoke(IPC.hooksUninstall),
   getHistory: (limit) => ipcRenderer.invoke(IPC.historyGet, limit),

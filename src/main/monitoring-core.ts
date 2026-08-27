@@ -54,7 +54,7 @@ export class MonitoringCore {
   private adapterIds: string[] = []
   private hooksInstaller = new HooksInstaller()
 
-  constructor(private config: ConfigStore) {
+  constructor(private config: ConfigStore, private appVersion: string) {
     this.httpIngest = new HttpIngestAdapter()
     this.dnd = config.get('dnd') ?? false
     this.muted = config.get('muted') ?? false
@@ -214,6 +214,7 @@ export class MonitoringCore {
       })
     }
     return {
+      version: this.appVersion,
       dnd: this.dnd,
       muted: this.muted,
       soundPack: this.config.get('soundPack') ?? 'chime',

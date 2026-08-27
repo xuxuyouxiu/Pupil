@@ -11,6 +11,8 @@ export interface AdapterStatus {
 
 /** 设置面板快照（settings:get 返回） */
 export interface SettingsSnapshot {
+  /** 当前应用版本（package.json version，用于更新功能展示） */
+  version: string
   dnd: boolean
   muted: boolean
   /** 音色包 id（chime/wood/chip/alarm） */
@@ -25,6 +27,33 @@ export interface SettingsSnapshot {
   adapters: AdapterStatus[]
 }
 
+/** 更新检查状态 */
+export type UpdateStatus =
+  | 'disabled' // 未启用（非打包环境/未初始化）
+  | 'dev' // 开发模式不检查
+  | 'checking' // 正在检查
+  | 'available' // 发现新版本
+  | 'downloading' // 正在下载更新包
+  | 'downloaded' // 已下载，等待安装
+  | 'not-available' // 已是最新
+  | 'error' // 检查失败
+
+/** 更新检查结果（main -> renderer） */
+export interface UpdateCheckResult {
+  status: UpdateStatus
+  currentVersion: string
+  latestVersion?: string
+  /** 发布说明（release.name / body 摘要） */
+  message?: string
+  /** GitHub Release 页面 */
+  releaseUrl?: string
+  /** 选中的安装包下载地址 */
+  assetUrl?: string
+  assetName?: string
+  /** 检查/下载失败时的可读原因 */
+  error?: string
+}
+
 /** 事件历史条目（跨会话合并，时间倒序） */
 export type { SessionHistoryItem } from './events'
 
@@ -35,6 +64,13 @@ export const IPC = {
   sessionDelta: 'pupil:sessions:delta',
   /** renderer -> 主进程：请求全量快照（面板/球体首次挂载时） */
   sessionsGet: 'pupil:sessions:get',
+
+  /** renderer -> 主进程：检查更新（返回 UpdateCheckResult） */
+  updateCheck: 'pupil:update:check',
+  /** renderer -> 主进程：下载并打开最新安装包 */
+  updateDownload: 'pupil:update:download',
+  /** renderer -> 主进程：在浏览器打开 GitHub Release 页 */
+  updateOpenPage: 'pupil:update:open-page',
 
   /** 主进程 -> renderer：请求播放音效（type: done/waiting/error/timeout/offline） */
   soundPlay: 'pupil:sound:play',
