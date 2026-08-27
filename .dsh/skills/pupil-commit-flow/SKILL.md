@@ -36,6 +36,7 @@ description: Pupil 项目任务完成后的提交流程——用户会在任务�
 - **版本号与 CHANGELOG 必须同 commit 落地**：历史提交（如 2eaa516 feat(v0.5.2)）都是 package.json + CHANGELOG + docs 同一提交，单独改代码不留版本会被用户认为"没走完流程"。
 - **重打包前先杀掉运行中的 Pupil**：`release/win-unpacked` 被运行中的 Pupil.exe 锁定会导致 electron-builder `Access is denied`（chrome_100_percent.pak 等）。Git Bash 里 `taskkill` 会被 MSYS 把 `/F` 换成路径，必须 `cmd //c "taskkill /F /IM Pupil.exe"`，然后再 `rm -rf release/win-unpacked` 重跑 `npm run dist`。
 - **commit 前确认无临时/探针文件**：本会话常在 G:\deepseek-harness 下写 .tmp-*.mts 探针，跑完要删；`git add -A` 前看一遍 status。
+- **运行 Pupil 产生的 `.config/` 不能入库**：开发环境 APPDATA 缺失时 dataDir 会回退到仓库下 `.config/pupil`（endpoint.json/token/hooks 会写进去），`git add -A` 会连同 token 一起提交（v0.5.7 踩过，已 force-push 重写历史）。`.gitignore` 已忽略 `.config/`，提交前如发现 `.config/` 在 status 里先 `git rm -r --cached .config` 再加 `.gitignore`。
 - **无 remote 不要 push**：用户环境常见"提交了但没推送"卡在流程后半段，交付时明确说清已提交、未推送。
 - **先查 git status 再接手**：用户可能在外部工具改过代码（如 PodMuse、Pupil），不要直接 `git add -A` 覆盖未完成的工作。
 
