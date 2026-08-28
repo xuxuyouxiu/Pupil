@@ -304,8 +304,8 @@ export function Ball() {
             cy={28}
             r={21}
             fill="var(--orb-body)"
-            stroke="rgba(255,255,255,0.16)"
-            strokeWidth={1.1}
+            stroke="rgba(255,255,255,0.22)"
+            strokeWidth={1.2}
             className={`${
               mood === 'dizzy'
                 ? 'ball-dizzy-shake'
