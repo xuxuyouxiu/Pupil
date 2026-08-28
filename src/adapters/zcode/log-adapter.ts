@@ -78,6 +78,8 @@ export function mapModelIoLine(
     events.push({ eventType: 'turn_started', timestamp: ts })
   }
 
+  const resp = (line.response ?? {}) as Record<string, unknown>
+
   // error：请求失败/重试在此暴露
   if (line.error) {
     const err = line.error
@@ -90,14 +92,24 @@ export function mapModelIoLine(
     events.push({ eventType: 'error', timestamp: ts, payload: { errorMessage: message, raw: line } })
   }
 
-  // 完成：finishReason 存在且非工具调用续行 => 本轮真正收敛
-  const resp = (line.response ?? {}) as Record<string, unknown>
+  // 完成：finishReason 存在且非工具调用续行 => 本轮真正收敛。
+  // v1.1.2 关键：收敛行【不再追加 thinking 活动脉冲】——此前脉冲排在完成事件之后，
+  // 会把状态机从 idle/done 又推回 thinking：done 弹窗被打断、turnStartedAt 被清空后
+  // 时长永远 --:--、球在答完后仍显示思考（用户报告的两个残留症状同根因）。
+  // 本行 usage 挂在 turn_completed 上（随事件流照常入账）
   const finishReason = typeof resp.finishReason === 'string' ? resp.finishReason : ''
-  if (finishReason && !/tool/i.test(finishReason)) {
-    events.push({ eventType: 'turn_completed', timestamp: ts, payload: { raw: line } })
+  const turnEnded = !!finishReason && !/tool/i.test(finishReason)
+  if (turnEnded) {
+    const usage = extractUsage(resp)
+    events.push({
+      eventType: 'turn_completed',
+      timestamp: ts,
+      payload: { raw: line, ...(usage ? { usage } : {}) }
+    })
+    return { events, turnId }
   }
 
-  // 活动脉冲：任何完成的请求都证明会话在动
+  // 活动脉冲：回合进行中的每次请求
   events.push({ eventType: 'thinking', timestamp: ts, payload: { usage: extractUsage(resp) } })
 
   return { events, turnId }

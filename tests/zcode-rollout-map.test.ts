@@ -72,11 +72,10 @@ describe('mapModelIoLine 轮次边界（turnId）', () => {
     )
   })
 
-  it('无 turnId 的行不触发轮次开始（其余信号照常）', () => {
+  it('无 turnId 的行不触发轮次开始（stop 收敛后不再有活动脉冲）', () => {
     const events = types(modelIo({ finishReason: 'stop' }), 't1')
     expect(events).not.toContain('turn_started')
-    expect(events).toContain('turn_completed') // finishReason 仍生效
-    expect(events).toContain('thinking')
+    expect(events).toEqual(['turn_completed']) // 收敛行只有完成事件，不再跟脉冲
   })
 })
 
@@ -107,7 +106,7 @@ describe('mapModelIoLine 完成判定（finishReason）', () => {
 })
 
 describe('mapModelIoLine 用量提取（response.usage）', () => {
-  it('inputTokens 已含缓存读/写时正确拆回各分量', () => {
+  it('inputTokens 已含缓存读/写时正确拆回各分量（usage 挂在收敛事件上）', () => {
     const mapped = mapModelIoLine(
       modelIo({
         turnId: 't1',
@@ -116,13 +115,29 @@ describe('mapModelIoLine 用量提取（response.usage）', () => {
       }),
       't1'
     )
+    // v1.1.2：收敛行只发 turn_completed（无脉冲），usage 挂在它上面
     const usageEv = mapped.events.find((e) => e.payload?.usage)
+    expect(usageEv?.eventType).toBe('turn_completed')
     expect(usageEv?.payload?.usage).toMatchObject({
       inputTokens: 558_926 - 556_672 - 100, // 真实输入 = 总输入 - 缓存读 - 缓存写
       outputTokens: 619,
       cacheReadTokens: 556_672,
       cacheCreationTokens: 100
     })
+  })
+
+  it('tool-calls 续行（回合进行中）的 usage 挂在 thinking 脉冲上', () => {
+    const mapped = mapModelIoLine(
+      modelIo({
+        turnId: 't1',
+        finishReason: 'tool-calls',
+        usage: { inputTokens: 900, outputTokens: 40 }
+      }),
+      't1'
+    )
+    const usageEv = mapped.events.find((e) => e.payload?.usage)
+    expect(usageEv?.eventType).toBe('thinking')
+    expect(usageEv?.payload?.usage).toMatchObject({ inputTokens: 900, outputTokens: 40 })
   })
 
   it('全零用量不产出 usage 载荷', () => {

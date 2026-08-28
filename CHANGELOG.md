@@ -2,6 +2,12 @@
 
 本文件记录 Pupil 的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [1.1.2] - 2026-08-28
+
+### 修复
+- **运行中的会话行看不到时长与费用（显示 `--:--`）**：ZCode 每行收敛日志（finishReason=stop）会派生 turn_completed + thinking 两个事件——完成事件把 turnStartedAt 清空后，紧随的活动脉冲又把状态推回 thinking，导致回合实际已结束但行上无计时起点、费用被「--:--」观感掩盖；收敛行现在只发 turn_completed（usage 挂在它上面照常入账），不再追加脉冲。此修复同时根治「答完仍显示思考」的同类残留
+- ZCode stop 行的 usage 移挂到 turn_completed 事件（tool-calls 续行仍在 thinking 脉冲上），测试同步覆盖两种挂载
+
 ## [1.1.1] - 2026-08-28
 
 ### 修复
