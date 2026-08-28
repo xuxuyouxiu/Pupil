@@ -35,6 +35,8 @@ export interface SettingsSnapshot {
   adapters: AdapterStatus[]
   /** 通知粒度开关（未提供的键按默认放行） */
   notifyEvents?: NotifyFilter
+  /** 界面语言（v1.1.0）：system=跟随系统 */
+  locale?: 'system' | 'zh' | 'en'
 }
 
 /** 更新检查状态 */
@@ -131,6 +133,10 @@ export const IPC = {
   panelToggle: 'pupil:panel:toggle',
   /** renderer -> 主进程：上报面板内容高度（px），主进程据此自适应窗口高度 */
   panelResize: 'pupil:panel:resize',
+  /** renderer -> 主进程：查询生效语言（'zh' | 'en'） */
+  localeGet: 'pupil:locale:get',
+  /** 主进程 -> renderer：语言变化（renderer 收到后重渲染/由主进程统一刷新窗口） */
+  localeChanged: 'pupil:locale:changed',
   /** renderer -> 主进程：写系统剪贴板（空状态复制接入命令等） */
   clipboardWrite: 'pupil:clipboard:write',
 

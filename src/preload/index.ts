@@ -45,9 +45,12 @@ export interface PupilApi {
     soundPack?: string
     soundVolume?: number
     notifyEvents?: NotifyFilter
+    locale?: 'system' | 'zh' | 'en'
   }): Promise<SettingsSnapshot>
   /** 面板内容高度自适应：renderer 上报内容高度，主进程调整窗口高度 */
   setPanelHeight(height: number): void
+  /** 生效语言（v1.1.0）：config.locale 覆盖，否则跟随系统 */
+  getLocale(): Promise<'zh' | 'en'>
   /** 写系统剪贴板 */
   writeClipboard(text: string): Promise<boolean>
   setAdapterEnabled(id: string, enabled: boolean): Promise<boolean>
@@ -107,6 +110,7 @@ const api: PupilApi = {
   getSettings: () => ipcRenderer.invoke(IPC.settingsGet),
   setSettings: (patch) => ipcRenderer.invoke(IPC.settingsSet, patch),
   setPanelHeight: (height) => ipcRenderer.send(IPC.panelResize, height),
+  getLocale: () => ipcRenderer.invoke(IPC.localeGet),
   writeClipboard: (text) => ipcRenderer.invoke(IPC.clipboardWrite, text),
   setAdapterEnabled: (id, enabled) => ipcRenderer.invoke(IPC.adapterSetEnabled, id, enabled),
   checkUpdate: () => ipcRenderer.invoke(IPC.updateCheck),

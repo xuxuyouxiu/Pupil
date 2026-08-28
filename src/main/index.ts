@@ -51,8 +51,9 @@ if (!gotLock) {
 }
 
 function bootstrap(): void {
-  // v1.0.0 i18n：主进程文案（托盘/菜单/通知）跟随系统语言
-  setLocale(app.getLocale())
+  // v1.1.0 语言：真正的解析移到 whenReady 之后（app.getLocale 在 ready 前
+  // 恒返回 en-US——此前「托盘永远英文、面板中文」对不上的根因）。
+  // 用户也可在设置里手动覆盖（config.locale）。
   const config = new ConfigStore()
   const core = new MonitoringCore(config, app.getVersion())
   const updater = new Updater()
@@ -106,6 +107,35 @@ function bootstrap(): void {
   // 开机自启：启动时按持久化偏好同步一次（用户在系统侧手动改掉则以此处为准恢复）
   if (config.get('autoLaunch') && app.isPackaged) {
     autoLaunch.set(true)
+  }
+
+  // v1.1.0 语言切换出口：持久化 → 主进程文案即时切换 → 广播 → 统一刷新窗口
+  const applyLocaleChange = (raw: unknown): void => {
+    if (raw !== 'system' && raw !== 'zh' && raw !== 'en') return
+    config.set('locale', raw)
+    const effective =
+      raw === 'system'
+        ? app.getLocale().startsWith('zh')
+          ? 'zh'
+          : 'en'
+        : raw
+    setLocale(effective)
+    tray.refresh()
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) win.webContents.send(IPC.localeChanged, effective)
+    }
+    // 静态文案重载窗口生效（球/面板/设置窗口）
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) win.webContents.reload()
+    }
+  }
+  const resolveEffectiveLocale = (): 'zh' | 'en' => {
+    const saved = config.get('locale')
+    return saved === 'zh' || saved === 'en'
+      ? saved
+      : app.getLocale().startsWith('zh')
+        ? 'zh'
+        : 'en'
   }
 
   // ---- IPC handlers ----
@@ -192,9 +222,11 @@ function bootstrap(): void {
         soundPack?: string
         soundVolume?: number
         notifyEvents?: NotifyFilter
+        locale?: string
       }
     ) => {
       if (patch.dnd !== undefined) core.setDnd(patch.dnd)
+      if (patch.locale !== undefined) applyLocaleChange(patch.locale)
       if (patch.notifyEvents !== undefined && typeof patch.notifyEvents === 'object') {
         core.setNotifyEvents(patch.notifyEvents)
       }
@@ -288,6 +320,9 @@ function bootstrap(): void {
   ipcMain.on(IPC.appQuit, () => app.quit())
 
   app.whenReady().then(() => {
+    // v1.1.0：ready 后解析一次生效语言（app.getLocale 此时才可靠）
+    setLocale(resolveEffectiveLocale())
+    ipcMain.handle(IPC.localeGet, () => resolveEffectiveLocale())
     windows.createBallWindow()
     gaze.start()
     tray.create()

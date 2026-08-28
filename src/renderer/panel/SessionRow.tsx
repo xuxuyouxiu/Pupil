@@ -111,7 +111,11 @@ export function SessionRow({ view }: { view: SessionView }) {
         </div>
       </div>
       <span className="duration">
-        {formatDuration(runningMs)}
+        {runningMs !== undefined
+          ? formatDuration(runningMs)
+          : state === 'running'
+            ? '--:--'
+            : '—'}
         {view.usage && view.usage.totalIn + view.usage.totalOut > 0 && (
           <span className="usage" title={t('rowTitle')}>
             {' · '}

@@ -372,6 +372,7 @@ export class MonitoringCore {
       customSounds,
       dnd: this.dnd,
       muted: this.muted,
+      locale: this.config.get('locale') ?? 'system',
       notifyEvents: { ...NOTIFY_FILTER_DEFAULTS, ...this.notifyFilter },
       soundPack: this.config.get('soundPack') ?? 'chime',
       soundVolume: this.config.get('soundVolume') ?? 0.8,

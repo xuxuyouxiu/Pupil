@@ -288,6 +288,31 @@ export function Settings({ onBack }: Props) {
             {tab === 'general' && (
               <>
                 <section className="settings-section">
+                  <h3 className="settings-heading">{t('localeRow')}</h3>
+                  <div className="setting-row">
+                    <div className="setting-info">
+                      <div>
+                        <div className="setting-name">{t('localeRow')}</div>
+                        <div className="setting-desc">{t('followSystem')} / 中文 / English</div>
+                      </div>
+                    </div>
+                    <select
+                      className="sound-select"
+                      value={snap.locale ?? 'system'}
+                      onChange={(e) =>
+                        void window.pupil.setSettings({
+                          locale: e.target.value as 'system' | 'zh' | 'en'
+                        })
+                      }
+                    >
+                      <option value="system">{t('followSystem')}</option>
+                      <option value="zh">{t('langZh')}</option>
+                      <option value="en">{t('langEn')}</option>
+                    </select>
+                  </div>
+                </section>
+
+                <section className="settings-section">
                   <h3 className="settings-heading">{t('headingAlertMode')}</h3>
                   <div className="setting-row">
                     <div className="setting-info">
