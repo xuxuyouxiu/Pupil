@@ -4,6 +4,7 @@
  */
 import { useEffect, useState } from 'react'
 import { SessionView, toDisplayState, DisplayState } from '../../shared/events'
+import { t } from '../../shared/i18n'
 import { ExternalLink } from '../shared/icons'
 import { formatDuration } from './Panel'
 
@@ -31,19 +32,19 @@ const AGENT_LABEL: Record<string, string> = {
 function activity(view: SessionView): string {
   switch (toDisplayState(view)) {
     case 'running':
-      return view.currentTool ? `调用 ${view.currentTool}` : '思考中…'
+      return view.currentTool ? `${t('activityCalling')} ${view.currentTool}` : t('activityThinking')
     case 'waiting':
-      return '等待确认'
+      return t('activityWaiting')
     case 'done':
-      return '已完成 · 点击查看结果'
+      return t('activityDone')
     case 'error':
-      return view.state === 'error' ? '任务失败' : '错误'
+      return view.state === 'error' ? t('activityFailed') : t('activityError')
     case 'timeout':
-      return '运行超时'
+      return t('activityTimeout')
     case 'offline':
-      return '连接中断'
+      return t('activityOffline')
     default:
-      return '空闲'
+      return t('activityIdle')
   }
 }
 
@@ -103,7 +104,7 @@ export function SessionRow({ view }: { view: SessionView }) {
         </div>
         <div className="row-sub">
           {notFound ? (
-            <span className="row-sub-warn">窗口未找到</span>
+            <span className="row-sub-warn">{t('windowNotFound')}</span>
           ) : (
             <span>{activity(view)}</span>
           )}
@@ -112,7 +113,7 @@ export function SessionRow({ view }: { view: SessionView }) {
       <span className="duration">
         {formatDuration(runningMs)}
         {view.usage && view.usage.totalIn + view.usage.totalOut > 0 && (
-          <span className="usage" title="会话累计 tokens 与成本">
+          <span className="usage" title={t('rowTitle')}>
             {' · '}
             {fmtTokens(view.usage.totalIn + view.usage.totalOut)}
             {view.usage.costTotal > 0 ? ` · $${view.usage.costTotal.toFixed(2)}` : ''}
@@ -121,7 +122,7 @@ export function SessionRow({ view }: { view: SessionView }) {
       </span>
       <button
         className={`jump-btn ${hover ? 'visible' : ''}`}
-        aria-label="跳转会话窗口"
+        aria-label={t('jumpTooltip')}
         onClick={(e) => {
           e.stopPropagation()
           void jump()

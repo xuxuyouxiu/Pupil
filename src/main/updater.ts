@@ -18,6 +18,7 @@ import * as nodeNet from 'node:net'
 import { autoUpdater, UpdateCheckResult as EuCheckResult } from 'electron-updater'
 import { UpdateCheckResult } from '../shared/ipc-channels'
 import { dataDir } from '../adapters/http-ingest/auth'
+import { t } from '../shared/i18n'
 
 const OWNER = 'xuxuyouxiu'
 const REPO = 'Pupil'
@@ -321,7 +322,7 @@ export class Updater {
       try {
         new Notification({
           title: 'Pupil 更新',
-          body: `v${this.result.latestVersion} 校验通过，正在退出并自动安装，稍候自动重启…`
+          body: `v${this.result.latestVersion} · ${t('notifVerified')}`
         }).show()
       } catch {
         /* 通知失败不阻断 */
@@ -387,8 +388,8 @@ export class Updater {
   private notifyAvailable(): void {
     try {
       new Notification({
-        title: 'Pupil 有新版本',
-        body: `发现 v${this.result.latestVersion}，打开设置即可下载更新`
+        title: `Pupil · ${t('foundNewVersion')}`,
+        body: `v${this.result.latestVersion} · ${t('silentInstallHint')}`
       }).show()
     } catch {
       /* 通知失败不阻断 */

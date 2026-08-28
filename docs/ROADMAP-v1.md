@@ -34,9 +34,9 @@
 
 | # | 条目 | 验收标准 | 状态 |
 |---|------|---------|------|
-| 4.1 | **差量更新** | 迁移 electron-updater（GitHub provider + CDN feed 双源），利用 blockmap 只下差异块；保留现有三通道回退与取证日志 | ☐ |
-| 4.2 | **i18n 英文界面** | renderer 全量字符串抽离 zh/en；跟随系统语言；README_EN 同步 | ☐ |
-| 4.3 | **适配器 SDK 文档** | docs/adapter-sdk.md：事件模型、生命周期、打包发布约定；external adapter 示例模板；HTTP 协议参考 | ☐ |
+| 4.1 | **差量更新** | 更新内核迁移 electron-updater（阿里云 CDN generic feed 优先 + GitHub provider 兜底），blockmap 差量下载；保留代理预检/直连兜底/取证日志/强杀安装批处理；完整 sha512 内建 | ☑ |
+| 4.2 | **i18n 英文界面** | shared/i18n.ts zh/en 字典（~120 键）；跟随系统语言；面板/会话行/事件历史/设置全量 + 托盘菜单/通知/简报（正文符号化语言无关）；README 补 EN 简介 | ☑ |
+| 4.3 | **适配器 SDK 文档** | docs/adapter-sdk.md：事件契约、三通道（HTTP/Hooks/external）、工具函数索引、贡献检查单 | ☑ |
 
 ---
 

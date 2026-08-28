@@ -2,6 +2,8 @@
 
 > 多 Agent 任务监控悬浮球。AI 编程 Agent 在后台干活时，用余光看一眼就知道：**在跑、在等、出错、完成**——不用再逐个切换终端标签页"狩猎"哪个会话卡住了。
 
+**English**: A floating-orb monitor for AI coding agents on Windows — glanceable status (running / waiting / done / error), proactive sound & notification alerts, click-to-jump back to the session window. Supports Claude Code, Codex, Hermes, DSH, ZCode and any custom tool via HTTP/JS adapters. UI follows your system language (中文 / English). See [docs/adapter-sdk.md](docs/adapter-sdk.md) · [docs/ROADMAP-v1.md](docs/ROADMAP-v1.md).
+
 ## 特性
 
 - 悬浮球常驻屏幕边缘，按会话显示状态（运行/等待输入/完成/出错/超时）

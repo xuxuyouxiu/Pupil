@@ -1,6 +1,6 @@
 {
   "name": "pupil",
-  "version": "1.0.0-rc.1",
+  "version": "1.0.0",
   "description": "Pupil",
   "main": "out/main/index.js",
   "author": "Pupil Team",

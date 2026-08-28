@@ -21,6 +21,7 @@ import { InferenceEngine } from '../core/inference'
 import { resolveStrategy, notifyAllowed } from '../core/notify-rules'
 import { DailyDigest, DigestSummary } from '../core/digest'
 import { AgentEvent, ModelPricing, NotifyFilter, NOTIFY_FILTER_DEFAULTS, SessionHistoryItem, SessionView, sessionKey } from '../shared/events'
+import { t } from '../shared/i18n'
 import { SettingsSnapshot, AdapterStatus } from '../shared/ipc-channels'
 import { ConfigStore } from './config'
 
@@ -237,10 +238,12 @@ export class MonitoringCore {
     const hours = Math.floor(s.runMs / 3_600_000)
     const mins = Math.round((s.runMs % 3_600_000) / 60_000)
     const tokens = s.tokensIn + s.tokensOut
+    // 符号化正文：语言无关（✓ 完成 ✗ 出错 ⏱ 运行 Σ tokens）
     const body = [
-      `完成 ${s.completed} · 出错 ${s.errors}`,
-      s.runMs > 0 ? `运行 ${hours}h ${mins}m` : '',
-      tokens > 0 ? `tokens ${(tokens / 1000).toFixed(1)}k` : ''
+      `✓ ${s.completed}`,
+      `✗ ${s.errors}`,
+      s.runMs > 0 ? `⏱ ${hours}h ${mins}m` : '',
+      tokens > 0 ? `Σ ${(tokens / 1000).toFixed(1)}k` : ''
     ]
       .filter(Boolean)
       .join(' · ')
@@ -250,7 +253,7 @@ export class MonitoringCore {
         sound: false,
         soundType: null,
         toast: true,
-        title: 'Pupil 今日简报',
+        title: t('digestTitle'),
         body
       },
       {

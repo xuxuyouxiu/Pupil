@@ -4,6 +4,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { SessionView, toDisplayState, DisplayState, DISPLAY_PRIORITY } from '../../shared/events'
+import { t, I18nKey } from '../../shared/i18n'
 import { useSessions } from '../ball/use-sessions'
 import { SessionRow } from './SessionRow'
 import { Settings } from './Settings'
@@ -12,15 +13,15 @@ import { Moon, Settings as SettingsIcon, Radar, History } from '../shared/icons'
 
 type Tab = 'sessions' | 'history'
 
-const STATE_LABEL: Record<DisplayState, string> = {
-  initializing: '加载中',
-  running: '运行',
-  waiting: '待输入',
-  done: '完成',
-  error: '错误',
-  timeout: '超时',
-  offline: '断连',
-  idle: '空闲'
+const STATE_LABEL_KEY: Record<DisplayState, I18nKey> = {
+  initializing: 'stateInitializing',
+  running: 'stateRunning',
+  waiting: 'stateWaiting',
+  done: 'stateDone',
+  error: 'stateError',
+  timeout: 'stateTimeout',
+  offline: 'stateOffline',
+  idle: 'stateIdle'
 }
 
 /** mm:ss / h:mm:ss 时长格式化 */
@@ -44,7 +45,7 @@ function summarize(views: SessionView[]): { state: DisplayState; label: string; 
   const order: DisplayState[] = ['running', 'waiting', 'done', 'error', 'timeout', 'offline']
   return order
     .filter((d) => (counts.get(d) ?? 0) > 0)
-    .map((d) => ({ state: d, label: STATE_LABEL[d], count: counts.get(d) ?? 0 }))
+    .map((d) => ({ state: d, label: t(STATE_LABEL_KEY[d]), count: counts.get(d) ?? 0 }))
 }
 
 export function Panel() {
@@ -105,7 +106,7 @@ export function Panel() {
       <header className={`panel-top ${dnd ? 'dnd' : ''}`}>
         <div className="summary">
           {summary.length === 0 ? (
-            <span className="summary-empty">无活跃会话</span>
+            <span className="summary-empty">{t('noActiveSessions')}</span>
           ) : (
             summary.map((s) => (
               <span key={s.state} className="summary-item">
@@ -118,20 +119,20 @@ export function Panel() {
         <div className="top-actions">
           {dndRemain !== null && (
             <span className="dnd-timer" title="定时勿扰剩余时间">
-              勿扰 {formatDuration(dndRemain)}
+              {t('dndRemaining')} {formatDuration(dndRemain)}
             </span>
           )}
           <button
             className={`icon-btn ${dnd ? 'active' : ''}`}
-            aria-label="切换勿扰模式"
-            title="左键开关勿扰；球右键可选定时勿扰"
+            aria-label={t('dnd')}
+            title={t('dndToggleHint')}
             onClick={() => void window.pupil.toggleDnd().then(setDnd)}
           >
             <Moon size={16} />
           </button>
           <button
             className="icon-btn"
-            aria-label="设置"
+            aria-label={t('settings')}
             onClick={() => setShowSettings(true)}
           >
             <SettingsIcon size={16} />
@@ -146,11 +147,11 @@ export function Panel() {
         ) : sorted.length === 0 ? (
           <div className="empty-state">
             <Radar size={32} strokeWidth={1.5} />
-            <p className="empty-title">未检测到运行中的 Agent 会话</p>
-            <p className="empty-sub">支持监控 Claude Code、Codex、Hermes、ZCode 等工具的后台会话</p>
+            <p className="empty-title">{t('emptyTitle')}</p>
+            <p className="empty-sub">{t('emptySub')}</p>
             <div className="empty-actions">
               <button className="empty-cta" onClick={() => void window.pupil.openSettingsWindow()}>
-                查看接入指引
+                {t('emptyGuide')}
               </button>
               <button
                 className="empty-cta ghost"
@@ -163,7 +164,7 @@ export function Panel() {
                   })
                 }}
               >
-                {copied ? '已复制 ✓' : '复制接入命令'}
+                {copied ? t('copied') : t('emptyCopy')}
               </button>
             </div>
           </div>
@@ -182,14 +183,14 @@ export function Panel() {
           className={`tab ${tab === 'sessions' ? 'active' : ''}`}
           onClick={() => setTab('sessions')}
         >
-          会话
+          {t('tabSessions')}
         </button>
         <button
           className={`tab ${tab === 'history' ? 'active' : ''}`}
           onClick={() => setTab('history')}
         >
           <History size={13} />
-          事件历史
+          {t('tabHistory')}
         </button>
       </footer>
     </div>

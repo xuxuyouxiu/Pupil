@@ -4,20 +4,21 @@
  */
 import { Fragment, useCallback, useEffect, useState } from 'react'
 import { SessionHistoryItem, AgentEventType } from '../../shared/events'
+import { t, I18nKey } from '../../shared/i18n'
 import { AlertTriangle, WifiOff, Zap } from '../shared/icons'
 
 /** 事件类型 -> 展示动词（与状态色一致） */
-const EVENT_VERB: Record<AgentEventType, string> = {
-  session_started: '会话开始',
-  session_ended: '会话结束',
-  turn_started: '开始新一轮',
-  thinking: '思考中',
-  tool_call_started: '调用',
-  tool_call_finished: '调用完成',
-  turn_completed: '完成回答',
-  waiting_input: '等待输入',
-  error: '出错',
-  heartbeat: '心跳'
+const EVENT_VERB_KEY: Record<AgentEventType, I18nKey> = {
+  session_started: 'evSessionStarted',
+  session_ended: 'evSessionEnded',
+  turn_started: 'evTurnStarted',
+  thinking: 'evThinking',
+  tool_call_started: 'evToolCall',
+  tool_call_finished: 'evToolCallDone',
+  turn_completed: 'evTurnCompleted',
+  waiting_input: 'evWaiting',
+  error: 'evErrorVerb',
+  heartbeat: 'evHeartbeat'
 }
 
 const EVENT_CLASS: Record<AgentEventType, string> = {
@@ -50,17 +51,17 @@ function formatTime(ts: number): string {
   return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
 }
 
-/** 日期分组标签（v0.8.0）：今天 / 昨天 / M月D日（跨年带年份） */
+/** 日期分组标签（v0.8.0 → v1.0.0 i18n）：今天 / 昨天 / M月D日（跨年带年份） */
 function dayLabel(ts: number): string {
   const d = new Date(ts)
-  if (Number.isNaN(d.getTime())) return '未知'
+  if (Number.isNaN(d.getTime())) return '?'
   const now = new Date()
   const startOfDay = (x: Date): number => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime()
   const diffDays = Math.round((startOfDay(now) - startOfDay(d)) / 86_400_000)
-  if (diffDays === 0) return '今天'
-  if (diffDays === 1) return '昨天'
-  const base = `${d.getMonth() + 1}月${d.getDate()}日`
-  return d.getFullYear() === now.getFullYear() ? base : `${d.getFullYear()}年${base}`
+  if (diffDays === 0) return t('today')
+  if (diffDays === 1) return t('yesterday')
+  const base = `${d.getMonth() + 1}/${d.getDate()}`
+  return d.getFullYear() === now.getFullYear() ? base : `${d.getFullYear()}/${base}`
 }
 
 function EventIcon({ type }: { type: AgentEventType }) {
@@ -102,13 +103,13 @@ export function EventHistory() {
   }
 
   if (items === null) {
-    return <div className="history-empty">加载中…</div>
+    return <div className="history-empty">{t('historyLoading')}</div>
   }
   if (items.length === 0) {
     return (
       <div className="history-empty">
-        暂无事件
-        <span className="history-empty-sub">接入 Agent 后事件会实时记录在这里</span>
+        {t('historyEmpty')}
+        <span className="history-empty-sub">{t('historyEmptySub')}</span>
       </div>
     )
   }
@@ -123,7 +124,7 @@ export function EventHistory() {
             {showDay && <li className="history-day">{label}</li>}
             <li
               className="history-row history-row-clickable"
-              title={`点击跳转 ${it.title ?? it.sessionId.slice(0, 12)} 窗口`}
+              title={`${t('jumpTooltip')}: ${it.title ?? it.sessionId.slice(0, 12)}`}
               onClick={() => void jumpToSession(it.key)}
             >
               <span className="history-time">{formatTime(it.timestamp)}</span>
@@ -132,10 +133,10 @@ export function EventHistory() {
                 <div className="history-title">
                   <span className="history-name">{it.title ?? it.sessionId.slice(0, 12)}</span>
                   <span className="agent-tag">{AGENT_LABEL[it.agentType] ?? it.agentType}</span>
-                  {jumped === it.key && <span className="history-jumped">已跳转</span>}
+                  {jumped === it.key && <span className="history-jumped">{t('historyJumped')}</span>}
                 </div>
                 <div className={`history-desc ${EVENT_CLASS[it.eventType]}`}>
-                  {EVENT_VERB[it.eventType]}
+                  {t(EVENT_VERB_KEY[it.eventType])}
                   {it.toolName ? ` ${it.toolName}` : ''}
                   {it.errorMessage ? ` · ${it.errorMessage}` : ''}
                 </div>

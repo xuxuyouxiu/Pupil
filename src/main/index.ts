@@ -19,6 +19,7 @@ import { activateSessionWindow } from '../integrations/win32-window'
 import { Updater } from './updater'
 import { IPC } from '../shared/ipc-channels'
 import { sessionKey, SoundKind, NotifyFilter } from '../shared/events'
+import { setLocale, t } from '../shared/i18n'
 
 // 轻量常驻工具：受限环境（CI/沙箱/无特权进程）下 GPU 进程易崩、Chromium 沙箱初始化失败——
 // 仅在这些环境关闭硬件加速与沙箱；普通桌面保留硬件加速（悬浮球更快出现、渲染更流畅）
@@ -50,6 +51,8 @@ if (!gotLock) {
 }
 
 function bootstrap(): void {
+  // v1.0.0 i18n：主进程文案（托盘/菜单/通知）跟随系统语言
+  setLocale(app.getLocale())
   const config = new ConfigStore()
   const core = new MonitoringCore(config, app.getVersion())
   const updater = new Updater()
@@ -138,30 +141,22 @@ function bootstrap(): void {
   })
   ipcMain.on(IPC.ballContext, () => {
     const remaining = core.dndRemainingMs
-    const dndLabel = core.isDnd
-      ? remaining !== null
-        ? `关闭勿扰（剩 ${Math.ceil(remaining / 60000)} 分钟）`
-        : '关闭勿扰模式'
-      : '勿扰 30 分钟'
     const menu = Menu.buildFromTemplate([
       ...(core.isDnd
         ? [
             {
-              label: dndLabel,
+              label:
+                remaining !== null
+                  ? `${t('dnd')} · ${Math.ceil(remaining / 60000)} min`
+                  : t('dnd'),
               click: () => core.setDnd(false)
             }
           ]
         : [
+            { label: `${t('dnd')} 30 min`, click: () => core.setDndFor(30 * 60_000) },
+            { label: `${t('dnd')} 60 min`, click: () => core.setDndFor(60 * 60_000) },
             {
-              label: '勿扰 30 分钟',
-              click: () => core.setDndFor(30 * 60_000)
-            },
-            {
-              label: '勿扰 1 小时',
-              click: () => core.setDndFor(60 * 60_000)
-            },
-            {
-              label: '勿扰到明早 9 点',
+              label: `${t('dnd')} 9:00`,
               click: () => {
                 const now = new Date()
                 const target = new Date(now)
@@ -171,9 +166,9 @@ function bootstrap(): void {
               }
             }
           ]),
-      { label: '设置', click: () => windows.openPanel() },
-      { type: 'separator' },
-      { label: '退出', click: () => app.quit() }
+      { label: t('settings'), click: () => windows.openPanel() },
+      { type: 'separator' as const },
+      { label: t('exit'), click: () => app.quit() }
     ])
     menu.popup({ window: windows.ballWindow ?? undefined })
   })

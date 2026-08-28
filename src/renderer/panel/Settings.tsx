@@ -1,7 +1,6 @@
 /**
  * Settings —— 设置视图（面板内）
- * v0.7.0 模块化：拆成「通用 / 音效 / 接入」三组页签，替代单页长滚动；
- * 记忆上次停留的分组（localStorage）。动画遵循 UIUX 文档克制原则（≤160ms）。
+ * v0.7.0 模块化三页签；v1.0.0 i18n（zh/en 字典见 shared/i18n.ts）
  */
 import React, { useCallback, useEffect, useState } from 'react'
 import { SettingsSnapshot, UpdateCheckResult } from '../../shared/ipc-channels'
@@ -9,6 +8,7 @@ import { SoundKind, NotifyFilter, NOTIFY_FILTER_DEFAULTS } from '../../shared/ev
 import { Moon, VolumeX, ChevronRight, X, Rocket, Music, Volume2, Download } from '../shared/icons'
 import { listSoundPacks, setSoundConfig, playSound } from '../ball/sound'
 import { formatSpeed } from '../../shared/format'
+import { t, I18nKey } from '../../shared/i18n'
 
 interface Props {
   onBack: () => void
@@ -18,27 +18,27 @@ interface Props {
 const SOUND_PACKS = listSoundPacks()
 
 /** 可自定义音频的事件类型（对应 SoundKind） */
-const CUSTOM_SOUND_KINDS: { id: SoundKind; label: string }[] = [
-  { id: 'done', label: '完成' },
-  { id: 'ended', label: '收工' },
-  { id: 'waiting', label: '等待输入' },
-  { id: 'error', label: '出错' },
-  { id: 'timeout', label: '超时' },
-  { id: 'offline', label: '断连' }
+const CUSTOM_SOUND_KINDS: { id: SoundKind; labelKey: I18nKey }[] = [
+  { id: 'done', labelKey: 'soundDone' },
+  { id: 'ended', labelKey: 'soundEnded' },
+  { id: 'waiting', labelKey: 'soundWaiting' },
+  { id: 'error', labelKey: 'soundError' },
+  { id: 'timeout', labelKey: 'soundTimeout' },
+  { id: 'offline', labelKey: 'soundOffline' }
 ]
 
 /** 设置分组 */
 type SettingTab = 'general' | 'sound' | 'access'
-const SETTING_TABS: { id: SettingTab; label: string }[] = [
-  { id: 'general', label: '通用' },
-  { id: 'sound', label: '音效' },
-  { id: 'access', label: '接入' }
+const SETTING_TABS: { id: SettingTab; labelKey: I18nKey }[] = [
+  { id: 'general', labelKey: 'tabGeneral' },
+  { id: 'sound', labelKey: 'tabSound' },
+  { id: 'access', labelKey: 'tabAccess' }
 ]
 
 function loadLastTab(): SettingTab {
   try {
     const saved = localStorage.getItem('pupil.settingsTab') as SettingTab | null
-    if (saved && SETTING_TABS.some((t) => t.id === saved)) return saved
+    if (saved && SETTING_TABS.some((tab) => tab.id === saved)) return saved
   } catch {
     /* storage 不可用时不影响 */
   }
@@ -47,22 +47,22 @@ function loadLastTab(): SettingTab {
 
 /** 更新状态说明文案 */
 function updateDesc(u: UpdateCheckResult | null): string {
-  if (!u || u.status === 'disabled') return '启动后自动检查 GitHub Releases'
-  if (u.status === 'dev') return '开发模式不检查更新'
+  if (!u || u.status === 'disabled') return t('autoCheckHint')
+  if (u.status === 'dev') return t('devNoCheck')
   switch (u.status) {
     case 'checking':
-      return '正在检查最新版本…'
+      return t('checking')
     case 'available':
-      return `发现 v${u.latestVersion ?? ''}，可点击下载更新`
+      return `${t('foundNewVersion')} v${u.latestVersion ?? ''} · ${t('availableHint')}`
     case 'downloading':
-      if (u.progress == null) return '正在尝试下载源…'
-      return `正在下载安装包… ${u.progress}%${formatSpeed(u.speedBps) ? ` · ${formatSpeed(u.speedBps)}` : ''}`
+      if (u.progress == null) return t('connectingSources')
+      return `${t('updateProgressText')} ${u.progress}%${formatSpeed(u.speedBps) ? ` · ${formatSpeed(u.speedBps)}` : ''}`
     case 'downloaded':
-      return '安装包已下载，请完成安装'
+      return t('downloadedHint')
     case 'not-available':
-      return '已是最新版本'
+      return t('upToDate')
     case 'error':
-      return `检查失败：${u.error ?? '未知错误'}`
+      return `${t('checkFailed')}: ${u.error ?? t('unknownError')}`
     default:
       return ''
   }
@@ -95,10 +95,10 @@ export function Settings({ onBack }: Props) {
   const [localVolume, setLocalVolume] = useState<number | null>(null)
   const [tab, setTab] = useState<SettingTab>(loadLastTab)
 
-  const selectTab = (t: SettingTab): void => {
-    setTab(t)
+  const selectTab = (next: SettingTab): void => {
+    setTab(next)
     try {
-      localStorage.setItem('pupil.settingsTab', t)
+      localStorage.setItem('pupil.settingsTab', next)
     } catch {
       /* ignore */
     }
@@ -112,7 +112,7 @@ export function Settings({ onBack }: Props) {
     void reload()
   }, [reload])
 
-  // 下载进行中：轮询主进程拿实时进度（88MB 下载期间不能一直停在“处理中…”）
+  // 下载进行中：轮询主进程拿实时进度
   useEffect(() => {
     if (update?.status !== 'downloading') return
     const timer = setInterval(() => {
@@ -140,12 +140,12 @@ export function Settings({ onBack }: Props) {
   }
 
   /** v0.8.0 通知粒度：按类别开关「音效+系统通知」 */
-  const NOTIFY_GRANULARITY: { key: keyof NotifyFilter; label: string; desc: string }[] = [
-    { key: 'turn_completed', label: '完成提醒', desc: '任务完成时的音效与通知' },
-    { key: 'waiting_input', label: '等待输入提醒', desc: '需要你确认权限时' },
-    { key: 'error', label: '出错提醒', desc: '任务报错时' },
-    { key: 'timeout', label: '超时提醒', desc: '运行中长时间无活动' },
-    { key: 'offline', label: '断连提醒', desc: '会话进程中断时' }
+  const NOTIFY_GRANULARITY: { key: keyof NotifyFilter; labelKey: I18nKey; descKey: I18nKey }[] = [
+    { key: 'turn_completed', labelKey: 'granCompleted', descKey: 'granCompletedDesc' },
+    { key: 'waiting_input', labelKey: 'granWaiting', descKey: 'granWaitingDesc' },
+    { key: 'error', labelKey: 'granError', descKey: 'granErrorDesc' },
+    { key: 'timeout', labelKey: 'granTimeout', descKey: 'granTimeoutDesc' },
+    { key: 'offline', labelKey: 'granOffline', descKey: 'granOfflineDesc' }
   ]
   const toggleNotifyEvent = async (key: keyof NotifyFilter): Promise<void> => {
     if (!snap) return
@@ -163,7 +163,7 @@ export function Settings({ onBack }: Props) {
     void reload()
   }
 
-  /** 拖动音量滑块：本地即时试听（节流由 input 事件天然限频），change 时持久化 */
+  /** 拖动音量滑块：本地即时试听，change 时持久化 */
   const previewVolume = (v: number): void => {
     if (!snap) return
     setSoundConfig(snap.soundPack, v)
@@ -244,17 +244,17 @@ export function Settings({ onBack }: Props) {
         <div className="settings-title">
           <button
             className="icon-btn"
-            aria-label="返回"
+            aria-label={t('back')}
             style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
             onClick={onBack}
           >
             <ChevronRight size={16} style={{ transform: 'rotate(180deg)' }} />
           </button>
-          <span>设置</span>
+          <span>{t('settings')}</span>
         </div>
         <button
           className="icon-btn"
-          aria-label="关闭"
+          aria-label={t('close')}
           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
           onClick={onBack}
         >
@@ -264,16 +264,16 @@ export function Settings({ onBack }: Props) {
 
       {/* 模块化导航（固定不随内容滚动） */}
       {snap && (
-        <nav className="settings-nav" role="tablist" aria-label="设置分组">
-          {SETTING_TABS.map((t) => (
+        <nav className="settings-nav" role="tablist" aria-label={t('settings')}>
+          {SETTING_TABS.map((tb) => (
             <button
-              key={t.id}
+              key={tb.id}
               role="tab"
-              aria-selected={tab === t.id}
-              className={`settings-tab ${tab === t.id ? 'active' : ''}`}
-              onClick={() => selectTab(t.id)}
+              aria-selected={tab === tb.id}
+              className={`settings-tab ${tab === tb.id ? 'active' : ''}`}
+              onClick={() => selectTab(tb.id)}
             >
-              {t.label}
+              {t(tb.labelKey)}
             </button>
           ))}
         </nav>
@@ -281,20 +281,20 @@ export function Settings({ onBack }: Props) {
 
       <div className="panel-body settings-body">
         {!snap ? (
-          <div className="settings-loading">加载中…</div>
+          <div className="settings-loading">{t('loading')}</div>
         ) : (
           <div className="settings-view" key={tab}>
             {/* ---------- 通用 ---------- */}
             {tab === 'general' && (
               <>
                 <section className="settings-section">
-                  <h3 className="settings-heading">提醒模式</h3>
+                  <h3 className="settings-heading">{t('headingAlertMode')}</h3>
                   <div className="setting-row">
                     <div className="setting-info">
                       <Moon size={16} />
                       <div>
-                        <div className="setting-name">勿扰模式</div>
-                        <div className="setting-desc">暂停所有音效与系统通知</div>
+                        <div className="setting-name">{t('dnd')}</div>
+                        <div className="setting-desc">{t('dndDesc')}</div>
                       </div>
                     </div>
                     <Toggle on={snap.dnd} onChange={() => void toggleDnd()} />
@@ -303,8 +303,8 @@ export function Settings({ onBack }: Props) {
                     <div className="setting-info">
                       <VolumeX size={16} />
                       <div>
-                        <div className="setting-name">静音</div>
-                        <div className="setting-desc">关闭音效，保留系统通知</div>
+                        <div className="setting-name">{t('muted')}</div>
+                        <div className="setting-desc">{t('mutedDesc')}</div>
                       </div>
                     </div>
                     <Toggle on={snap.muted} onChange={() => void toggleMuted()} />
@@ -312,14 +312,14 @@ export function Settings({ onBack }: Props) {
                 </section>
 
                 <section className="settings-section">
-                  <h3 className="settings-heading">系统</h3>
+                  <h3 className="settings-heading">{t('headingSystem')}</h3>
                   <div className="setting-row">
                     <div className="setting-info">
                       <Rocket size={16} />
                       <div>
-                        <div className="setting-name">开机自启</div>
+                        <div className="setting-name">{t('autoLaunch')}</div>
                         <div className="setting-desc">
-                          {snap.autoLaunch ? '已开启，登录 Windows 后自动运行' : '登录后自动运行 Pupil'}
+                          {snap.autoLaunch ? t('autoLaunchOn') : t('autoLaunchOff')}
                         </div>
                       </div>
                     </div>
@@ -328,16 +328,16 @@ export function Settings({ onBack }: Props) {
                 </section>
 
                 <section className="settings-section">
-                  <h3 className="settings-heading">通知粒度</h3>
-                  <p className="settings-hint">关闭的类别不再播放音效或弹通知（悬浮球状态显示不受影响）</p>
+                  <h3 className="settings-heading">{t('headingGranularity')}</h3>
+                  <p className="settings-hint">{t('granularityHint')}</p>
                   {NOTIFY_GRANULARITY.map((g) => {
                     const current = { ...NOTIFY_FILTER_DEFAULTS, ...snap.notifyEvents }
                     return (
                       <div className="setting-row" key={g.key}>
                         <div className="setting-info">
                           <div>
-                            <div className="setting-name">{g.label}</div>
-                            <div className="setting-desc">{g.desc}</div>
+                            <div className="setting-name">{t(g.labelKey)}</div>
+                            <div className="setting-desc">{t(g.descKey)}</div>
                           </div>
                         </div>
                         <Toggle on={current[g.key] !== false} onChange={() => void toggleNotifyEvent(g.key)} />
@@ -347,26 +347,41 @@ export function Settings({ onBack }: Props) {
                 </section>
 
                 <section className="settings-section">
-                  <h3 className="settings-heading">关于与更新</h3>
+                  <h3 className="settings-heading">{t('headingAbout')}</h3>
                   <div className="setting-row">
                     <div className="setting-info">
                       <Download size={16} />
                       <div>
-                        <div className="setting-name">当前版本 v{snap.version}</div>
+                        <div className="setting-name">
+                          {t('currentVersion')} v{snap.version}
+                        </div>
                         <div className="setting-desc">{updateDesc(update)}</div>
                       </div>
                     </div>
-                    <button className="hooks-btn" disabled={updateBusy} onClick={() => void checkUpdate()}>
-                      {updateBusy ? (update?.status === 'downloading' ? '下载中…' : '处理中…') : '检查更新'}
+                    <button
+                      className="hooks-btn"
+                      disabled={updateBusy}
+                      onClick={() => void checkUpdate()}
+                    >
+                      {updateBusy
+                        ? update?.status === 'downloading'
+                          ? t('downloading')
+                          : t('processing')
+                        : t('checkUpdate')}
                     </button>
                   </div>
                   {update?.status === 'downloading' && (
                     <div className="update-progress">
                       <div className="update-progress-track">
-                        <div className="update-progress-fill" style={{ width: `${update.progress ?? 2}%` }} />
+                        <div
+                          className="update-progress-fill"
+                          style={{ width: `${update.progress ?? 2}%` }}
+                        />
                       </div>
                       <span className="update-progress-text">
-                        {update.progress != null ? `已下载 ${update.progress}%${formatSpeed(update.speedBps) ? ` · ${formatSpeed(update.speedBps)}` : ''}` : '正在连接下载源…'}
+                        {update.progress != null
+                          ? `${t('updateProgressText')} ${update.progress}%${formatSpeed(update.speedBps) ? ` · ${formatSpeed(update.speedBps)}` : ''}`
+                          : t('connectingSources')}
                       </span>
                     </div>
                   )}
@@ -374,19 +389,28 @@ export function Settings({ onBack }: Props) {
                     <div className="setting-row">
                       <div className="setting-info">
                         <div>
-                          <div className="setting-name">发现新版本 v{update.latestVersion}</div>
-                          <div className="setting-desc">校验通过后将自动静默安装并重启</div>
+                          <div className="setting-name">
+                            {t('foundNewVersion')} v{update.latestVersion}
+                          </div>
+                          <div className="setting-desc">{t('silentInstallHint')}</div>
                         </div>
                       </div>
-                      <button className="hooks-btn" disabled={updateBusy} onClick={() => void downloadUpdate()}>
-                        下载更新
+                      <button
+                        className="hooks-btn"
+                        disabled={updateBusy}
+                        onClick={() => void downloadUpdate()}
+                      >
+                        {t('downloadUpdate')}
                       </button>
                     </div>
                   )}
                   {update?.status === 'available' && (
                     <div className="setting-row">
-                      <button className="hooks-btn" onClick={() => void window.pupil.openUpdatePage()}>
-                        在 GitHub 打开发布页
+                      <button
+                        className="hooks-btn"
+                        onClick={() => void window.pupil.openUpdatePage()}
+                      >
+                        {t('openReleasePage')}
                       </button>
                     </div>
                   )}
@@ -398,13 +422,13 @@ export function Settings({ onBack }: Props) {
             {tab === 'sound' && (
               <>
                 <section className="settings-section">
-                  <h3 className="settings-heading">提示音</h3>
+                  <h3 className="settings-heading">{t('headingSound')}</h3>
                   <div className="setting-row">
                     <div className="setting-info">
                       <Music size={16} />
                       <div>
-                        <div className="setting-name">音色包</div>
-                        <div className="setting-desc">切换时自动试听一声</div>
+                        <div className="setting-name">{t('soundPack')}</div>
+                        <div className="setting-desc">{t('soundPackDesc')}</div>
                       </div>
                     </div>
                     <select
@@ -423,8 +447,8 @@ export function Settings({ onBack }: Props) {
                     <div className="setting-info">
                       <Volume2 size={16} />
                       <div>
-                        <div className="setting-name">音量</div>
-                        <div className="setting-desc">拖动即时试听</div>
+                        <div className="setting-name">{t('volume')}</div>
+                        <div className="setting-desc">{t('volumeDesc')}</div>
                       </div>
                     </div>
                     <input
@@ -437,22 +461,27 @@ export function Settings({ onBack }: Props) {
                       onMouseUp={(e) => void commitVolume(Number((e.target as HTMLInputElement).value) / 100)}
                       onTouchEnd={(e) => void commitVolume(Number((e.target as HTMLInputElement).value) / 100)}
                       onKeyUp={(e) => void commitVolume(Number((e.target as HTMLInputElement).value) / 100)}
-                      aria-label="提示音音量"
+                      aria-label={t('volume')}
                     />
                   </div>
                 </section>
 
                 <section className="settings-section">
-                  <h3 className="settings-heading">自定义结束音效</h3>
-                  <p className="settings-hint">选择音频文件后，对应事件改播你的文件；未设置则用内置音色</p>
+                  <h3 className="settings-heading">{t('headingCustomSound')}</h3>
+                  <p className="settings-hint">{t('customSoundHint')}</p>
                   {CUSTOM_SOUND_KINDS.map((s) => {
                     const info = snap.customSounds?.[s.id]
                     return (
                       <div className="setting-row" key={s.id}>
                         <div className="setting-info">
                           <div>
-                            <div className="setting-name">{s.label}音效</div>
-                            <div className="setting-desc">{info ? info.name : '默认（内置音色）'}</div>
+                            <div className="setting-name">
+                              {t(s.labelKey)}
+                              {t('soundSuffix')}
+                            </div>
+                            <div className="setting-desc">
+                              {info ? info.name : t('soundDefaultDesc')}
+                            </div>
                           </div>
                         </div>
                         <div className="custom-sound-actions">
@@ -462,7 +491,7 @@ export function Settings({ onBack }: Props) {
                               disabled={busy === `sound-${s.id}`}
                               onClick={() => void previewCustomSound(s.id)}
                             >
-                              试听
+                              {t('preview')}
                             </button>
                           )}
                           <button
@@ -470,7 +499,7 @@ export function Settings({ onBack }: Props) {
                             disabled={busy === `sound-${s.id}`}
                             onClick={() => void pickCustomSound(s.id)}
                           >
-                            {info ? '更换' : '选择'}
+                            {info ? t('replace') : t('pick')}
                           </button>
                           {info && (
                             <button
@@ -478,7 +507,7 @@ export function Settings({ onBack }: Props) {
                               disabled={busy === `sound-${s.id}`}
                               onClick={() => void clearCustomSound(s.id)}
                             >
-                              清除
+                              {t('clear')}
                             </button>
                           )}
                         </div>
@@ -493,15 +522,23 @@ export function Settings({ onBack }: Props) {
             {tab === 'access' && (
               <>
                 <section className="settings-section">
-                  <h3 className="settings-heading">数据源适配器</h3>
+                  <h3 className="settings-heading">{t('headingAdapters')}</h3>
                   {snap.adapters.map((a) => (
                     <div className="setting-row" key={a.id}>
                       <div className="setting-info">
-                        <span className={`adapter-dot ${a.running ? 'run' : ''} ${!a.available ? 'off' : ''}`} />
+                        <span
+                          className={`adapter-dot ${a.running ? 'run' : ''} ${!a.available ? 'off' : ''}`}
+                        />
                         <div>
                           <div className="setting-name">{a.label}</div>
                           <div className="setting-desc">
-                            {!a.available ? '未检测到数据源' : a.running ? '运行中' : a.enabled ? '已启用' : '已关闭'}
+                            {!a.available
+                              ? t('adapterUnavailable')
+                              : a.running
+                                ? t('adapterRunning')
+                                : a.enabled
+                                  ? t('adapterEnabled')
+                                  : t('adapterDisabled')}
                           </div>
                         </div>
                       </div>
@@ -515,12 +552,14 @@ export function Settings({ onBack }: Props) {
                 </section>
 
                 <section className="settings-section">
-                  <h3 className="settings-heading">Claude Code Hooks</h3>
+                  <h3 className="settings-heading">{t('headingHooks')}</h3>
                   <div className="setting-row">
                     <div className="setting-info">
                       <div>
-                        <div className="setting-name">{snap.hooksInstalled ? '已安装' : '未安装'}</div>
-                        <div className="setting-desc">写入 ~/.claude/settings.json，让 Claude Code 实时上报事件</div>
+                        <div className="setting-name">
+                          {snap.hooksInstalled ? t('hooksInstalled') : t('hooksNotInstalled')}
+                        </div>
+                        <div className="setting-desc">{t('hooksDesc')}</div>
                       </div>
                     </div>
                     <button
@@ -528,7 +567,7 @@ export function Settings({ onBack }: Props) {
                       disabled={busy === 'hooks'}
                       onClick={() => void hooksAction(!snap.hooksInstalled)}
                     >
-                      {busy === 'hooks' ? '处理中…' : snap.hooksInstalled ? '卸载' : '安装'}
+                      {busy === 'hooks' ? t('processing') : snap.hooksInstalled ? t('uninstall') : t('install')}
                     </button>
                   </div>
                 </section>

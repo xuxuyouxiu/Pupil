@@ -7,6 +7,7 @@ import { MonitoringCore } from './monitoring-core'
 import { WindowManager } from './window-manager'
 import { resourcePath } from './paths'
 import { DisplayState, DISPLAY_PRIORITY, toDisplayState } from '../shared/events'
+import { t } from '../shared/i18n'
 
 /** 与 theme.css 状态色保持一致 */
 const STATE_COLORS: Record<DisplayState, string> = {
@@ -20,15 +21,13 @@ const STATE_COLORS: Record<DisplayState, string> = {
   idle: '#8b949e'
 }
 
-const STATE_LABELS: Record<DisplayState, string> = {
-  running: '运行',
-  waiting: '待输入',
-  done: '完成',
-  error: '错误',
-  timeout: '超时',
-  offline: '断连',
-  initializing: '加载',
-  idle: '空闲'
+const STATE_LABEL_KEYS: Partial<Record<DisplayState, 'stateRunning' | 'stateWaiting' | 'stateDone' | 'stateError' | 'stateTimeout' | 'stateOffline'>> = {
+  running: 'stateRunning',
+  waiting: 'stateWaiting',
+  done: 'stateDone',
+  error: 'stateError',
+  timeout: 'stateTimeout',
+  offline: 'stateOffline'
 }
 
 /** 勿扰时托盘一律灰色（不泄露状态细节，符合"勿扰"语义） */
@@ -101,13 +100,11 @@ export class TrayManager {
     const parts: string[] = []
     for (const d of ['running', 'waiting', 'done', 'error', 'timeout', 'offline'] as DisplayState[]) {
       const n = counts.get(d) ?? 0
-      if (n > 0) parts.push(`${n} ${STATE_LABELS[d]}`)
+      if (n > 0) parts.push(`${n} ${t(STATE_LABEL_KEYS[d] ?? 'stateIdle')}`)
     }
 
     const dnd = this.core.isDnd
-    const tooltip = dnd
-      ? `Pupil — 勿扰中 · ${parts.length ? parts.join(' · ') : '无活跃会话'}`
-      : `Pupil — ${parts.length ? parts.join(' · ') : '无活跃会话'}`
+    const tooltip = `Pupil — ${dnd ? `🌙 ${t('dnd')} · ` : ''}${parts.length ? parts.join(' · ') : t('noActiveSessions')}`
 
     const signature = `${dnd ? 'dnd:' : ''}${top}:${tooltip}`
     if (signature === this.lastSignature) return
@@ -126,7 +123,7 @@ export class TrayManager {
     const ball = this.windows.ballWindow
     return Menu.buildFromTemplate([
       {
-        label: '显示悬浮球',
+        label: t('trayShowBall'),
         type: 'checkbox',
         checked: !!ball && !ball.isDestroyed() && ball.isVisible(),
         click: (item) => {
@@ -137,18 +134,18 @@ export class TrayManager {
         }
       },
       {
-        label: this.core.isDnd ? '关闭勿扰模式' : '开启勿扰模式',
+        label: t('dnd'),
         // onDndChanged 回调统一负责窗口同步与托盘刷新
         click: () => this.core.toggleDnd()
       },
       { type: 'separator' },
       {
-        label: '设置',
+        label: t('settings'),
         click: () => this.windows.openPanel()
       },
       { type: 'separator' },
       {
-        label: '退出',
+        label: t('exit'),
         click: () => app.quit()
       }
     ])

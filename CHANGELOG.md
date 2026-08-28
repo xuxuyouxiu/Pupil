@@ -2,9 +2,20 @@
 
 本文件记录 Pupil 的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [1.0.0] - 2026-08-27
+
+> 🎉 路线图 v1 四个批次全部落地（docs/ROADMAP-v1.md）。自 0.5.9 起：11 个核心 Bug 修复、ZCode 适配器、全自动发版、阿里云 CDN 三通道、静默热更（强杀残留）、多线程/差量下载、设置模块化、通知粒度、定时勿扰、单会话静音、token 用量与成本、每日简报、双语言界面
+
+### 新增
+- **i18n 双语言界面**：`shared/i18n.ts` zh/en 字典（~120 键），跟随系统语言——面板/会话行/事件历史/设置全量、托盘菜单与悬停摘要、全部系统通知；简报正文符号化（✓/✗/⏱/Σ）语言无关；README 补英文简介
+- **适配器 SDK 文档**（随 rc.1）：docs/adapter-sdk.md
+
+### 变更（自 rc.1 起）
+- electron-updater 集成修复与字段去重；托盘状态键改 Partial 记录
+
 ## [1.0.0-rc.1] - 2026-08-27
 
-> 路线图批次四第 1、3 项落地（4.2 i18n 完成后出 v1.0.0 正式版）。**预发布**：electron-updater 迁移首次实战，欢迎反馈
+> 路线图批次四第 1、3 项落地。**预发布**
 
 ### 新增
 - **差量更新（blockmap）**：更新内核迁移至 electron-updater——新版本通常只下载变化块（88MB → 常见几 MB）；配套阿里云 CDN 固定目录 feed（`download/pupil/`，同步脚本新增 exe/blockmap 副本）优先 + GitHub provider 兜底，两轮之外保留「系统代理 → 直连」模式重试与 update-check.log 取证
