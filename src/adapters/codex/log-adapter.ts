@@ -22,6 +22,7 @@ import { AgentAdapter, AdapterFactory, AdapterHealth } from '../types'
 import { AgentEvent, AgentType } from '../../shared/events'
 import { SqliteDb } from '../sqlite'
 import { readUtf8Incremental } from '../incremental'
+import { safeJoin } from '../safe-path'
 
 const ID = 'codex-log'
 const ACTIVE_WINDOW_MS = 10 * 60 * 1000
@@ -247,12 +248,13 @@ export class CodexLogAdapter implements AgentAdapter {
     for (const month of dirs) {
       let days: fs.Dirent[]
       try {
-        days = fs.readdirSync(path.join(root, month.name), { withFileTypes: true }).filter((d) => d.isDirectory())
+        days = fs.readdirSync(safeJoin(root, month.name) ?? '', { withFileTypes: true }).filter((d) => d.isDirectory())
       } catch {
         continue
       }
       for (const day of days) {
-        const dir = path.join(root, month.name, day.name)
+        const dir = safeJoin(root, month.name, day.name)
+        if (!dir) continue
         let files: string[]
         try {
           files = fs.readdirSync(dir)
@@ -261,7 +263,8 @@ export class CodexLogAdapter implements AgentAdapter {
         }
         for (const f of files) {
           if (!f.endsWith('.jsonl')) continue
-          const p = path.join(dir, f)
+          const p = safeJoin(dir, f)
+          if (!p) continue
           try {
             if (Date.now() - fs.statSync(p).mtimeMs <= ACTIVE_WINDOW_MS) out.push(p)
           } catch {

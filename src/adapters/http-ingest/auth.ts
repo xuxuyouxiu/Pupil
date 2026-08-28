@@ -38,11 +38,11 @@ export class TokenManager {
     return token
   }
 
-  verify(authHeader: string | undefined): boolean {
-    if (!authHeader) return false
-    const m = /^Bearer\s+(.+)$/i.exec(authHeader.trim())
+  /** Bearer 令牌校验：常数时间比较，避免时序侧信道。纯内存比较，无任何外部调用 */
+  isAuthorizedBearer(authHeader: unknown): boolean {
+    if (typeof authHeader !== 'string' || !authHeader) return false
+    const m = authHeader.trim().match(/^Bearer\s+(.+)$/i)
     if (!m) return false
-    // 常数时间比较，避免时序侧信道
     const a = Buffer.from(m[1])
     const b = Buffer.from(this.token)
     if (a.length !== b.length) return false

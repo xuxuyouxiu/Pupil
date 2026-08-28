@@ -19,6 +19,7 @@ import * as path from 'path'
 import { AgentAdapter, AdapterFactory, AdapterHealth } from '../types'
 import { AgentEvent } from '../../shared/events'
 import { readUtf8Incremental } from '../incremental'
+import { safeJoin } from '../safe-path'
 
 const ID = 'zcode-rollout'
 const ACTIVE_WINDOW_MS = 60 * 60 * 1000
@@ -208,7 +209,8 @@ export class ZcodeRolloutAdapter implements AgentAdapter {
     const out: string[] = []
     for (const f of files) {
       if (!f.startsWith('model-io-sess_') || !f.endsWith('.jsonl')) continue
-      const p = path.join(root, f)
+      const p = safeJoin(root, f)
+      if (!p) continue
       try {
         if (Date.now() - fs.statSync(p).mtimeMs <= ACTIVE_WINDOW_MS) out.push(p)
       } catch {

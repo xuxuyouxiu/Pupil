@@ -1,0 +1,50 @@
+name: Release
+
+# 推送 v* 标签即自动打包并发布 Release（nsis + portable + latest.yml + blockmap）
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - run: npm run typecheck
+
+      - run: npm test
+
+      # renderer/main/preload 产物必须先构建（out/** 在 files 清单内），否则 asar 缺入口
+      - run: npm run build
+
+      # 发布配置取自 package.json build 字段（含 releaseType: release，直发正式版非草稿）
+      - name: Build & publish to GitHub Releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx electron-builder --win nsis portable --publish always
+
+      # 同步产物到阿里云 OSS（bucket 与 PodMuse 复用，更新器候选源含 dl.xuxuya66.top CDN 直链）。
+      # Secrets 未配置时脚本自行跳过，不阻塞发布
+      - name: Sync to Aliyun OSS（国内下载通道）
+        env:
+          PYTHONIOENCODING: utf-8
+          OSS_AK_ID: ${{ secrets.OSS_AK_ID }}
+          OSS_AK_SECRET: ${{ secrets.OSS_AK_SECRET }}
+          OSS_ENDPOINT: ${{ secrets.OSS_ENDPOINT }}
+        run: |
+          pip install oss2 --quiet
+          python scripts/sync-release-oss.py

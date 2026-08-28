@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # electron-builder install-app-deps 需要原始 token 认证到仓库依赖
+      - run: npm ci
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - run: npm run typecheck
+
+      - run: npm test
+
+      # koffi 等原生模块在 CI 缺 postinstall 白名单脚本时可能被 npm 忽略，此处兜底校验产物存在
+      - name: Verify build artifacts
+        run: |
+          ls out/ || true

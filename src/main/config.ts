@@ -31,6 +31,8 @@ export interface AppConfig {
   disabledAdapters?: string[]
   /** 通知粒度开关（v0.8.0）：按事件类别关闭音效+通知 */
   notifyEvents?: NotifyFilter
+  /** v0.9.0 单会话静音：被忽略会话的 sessionKey 列表（正常显示状态，不发声不弹通知） */
+  mutedSessions?: string[]
 }
 
 const DEFAULTS: AppConfig = {
@@ -68,6 +70,15 @@ export class ConfigStore {
 
   private save(): void {
     fs.mkdirSync(path.dirname(this.file), { recursive: true })
-    fs.writeFileSync(this.file, JSON.stringify(this.data, null, 2))
+    // v0.9.0 原子写：先写临时文件再改名，崩溃/断电不再产生半截 JSON。
+    // Windows 上目标被占用时 rename 会 EPERM，回退直写（旧行为）保底
+    const tmp = `${this.file}.tmp`
+    try {
+      fs.writeFileSync(tmp, JSON.stringify(this.data, null, 2))
+      fs.renameSync(tmp, this.file)
+    } catch {
+      fs.writeFileSync(this.file, JSON.stringify(this.data, null, 2))
+      fs.rmSync(tmp, { force: true })
+    }
   }
 }

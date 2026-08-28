@@ -19,7 +19,7 @@ import { HooksInstaller, buildHookCommand } from '../adapters/claude-code/hooks-
 import { SessionRegistry } from '../core/session-registry'
 import { InferenceEngine } from '../core/inference'
 import { resolveStrategy, notifyAllowed } from '../core/notify-rules'
-import { AgentEvent, NotifyFilter, NOTIFY_FILTER_DEFAULTS, SessionHistoryItem, SessionView } from '../shared/events'
+import { AgentEvent, NotifyFilter, NOTIFY_FILTER_DEFAULTS, SessionHistoryItem, SessionView, sessionKey } from '../shared/events'
 import { SettingsSnapshot, AdapterStatus } from '../shared/ipc-channels'
 import { ConfigStore } from './config'
 
@@ -49,6 +49,11 @@ export class MonitoringCore {
   private notifyExecutor: NotifyExecutor | null = null
   private inferenceTimer: NodeJS.Timeout | null = null
   private dnd = false
+  /** v0.9.0 定时勿扰：到期时间戳（null = 非定时勿扰），0 = 已到期待解除 */
+  private dndUntil: number | null = null
+  private dndTimer: NodeJS.Timeout | null = null
+  /** v0.9.0 单会话静音：sessionKey 集合 */
+  private mutedSessions: Set<string>
   /** v0.8.0 通知粒度开关：按事件类别关闭音效+通知（视觉状态不受影响） */
   private notifyFilter: NotifyFilter
   /** v0.5.0：上一 tick 是否存在 done 保持态（用于检测窗口到期触发回落广播） */
@@ -63,6 +68,7 @@ export class MonitoringCore {
     this.dnd = config.get('dnd') ?? false
     this.muted = config.get('muted') ?? false
     this.notifyFilter = config.get('notifyEvents') ?? {}
+    this.mutedSessions = new Set(config.get('mutedSessions') ?? [])
     this.inference = new InferenceEngine(this.registry, {
       timeoutThresholdMs: config.get('timeoutThresholdMs') ?? 10 * 60 * 1000,
       disconnectThresholdMs: config.get('disconnectThresholdMs') ?? 30 * 1000,
@@ -112,7 +118,7 @@ export class MonitoringCore {
     this.adapters.register(zcodeRolloutAdapterFactory) // 通道 A（ZCode 会话记录 tail）
 
     // P2-6 第三方 adapter 动态加载：%APPDATA%/pupil/adapters/*.js（单文件失败跳过）
-    const externals = loadExternalAdapters()
+    const externals = await loadExternalAdapters()
     for (const factory of externals) {
       const extId: string = factory.id ?? `external-${this.adapterIds.length}`
       this.adapters.register({ ...factory, id: extId })
@@ -187,12 +193,34 @@ export class MonitoringCore {
   /** 事件入口（adapter 上报） */
   private onEvent(event: AgentEvent): void {
     const view = this.registry.apply(event)
+    const key = sessionKey(event.agentType, event.sessionId)
+    // v0.9.0 单会话静音：被忽略会话不发声不弹 Toast（broadcast 照常，视觉保留）
+    const sessionMuted = this.mutedSessions.has(key)
     // v0.8.0 通知粒度：类别被用户关闭时不发声不弹 Toast（broadcast 照常，视觉保留）
-    if (!this.dnd && notifyAllowed(event.eventType, this.notifyFilter)) {
+    if (!this.dnd && !sessionMuted && notifyAllowed(event.eventType, this.notifyFilter)) {
       const strategy = resolveStrategy(event, view, { dnd: this.dnd, muted: this.muted })
       this.notifyExecutor?.(strategy, event, view)
     }
     this.broadcast()
+  }
+
+  /** v0.9.0 单会话静音：切换指定会话的通知忽略状态并持久化。返回切换后是否被忽略 */
+  toggleSessionMuted(key: string): boolean {
+    if (this.mutedSessions.has(key)) {
+      this.mutedSessions.delete(key)
+    } else {
+      this.mutedSessions.add(key)
+    }
+    this.config.set('mutedSessions', [...this.mutedSessions])
+    return this.mutedSessions.has(key)
+  }
+
+  isSessionMuted(key: string): boolean {
+    return this.mutedSessions.has(key)
+  }
+
+  get mutedSessionKeys(): string[] {
+    return [...this.mutedSessions]
   }
 
   private broadcast(): void {
@@ -208,6 +236,12 @@ export class MonitoringCore {
 
   setDnd(value: boolean): void {
     this.dnd = value
+    if (!value) {
+      // 手动关闭时清掉定时（若有），避免计时器到点又把刚解除的勿扰再动一遍
+      if (this.dndTimer) clearTimeout(this.dndTimer)
+      this.dndTimer = null
+      this.dndUntil = null
+    }
     this.config.set('dnd', value)
     this.broadcast() // 让球体更新月牙指示
     this.onDndChanged?.(value)
@@ -216,6 +250,29 @@ export class MonitoringCore {
   toggleDnd(): boolean {
     this.setDnd(!this.dnd)
     return this.dnd
+  }
+
+  /** v0.9.0 定时勿扰：开启并设置到期时间，到期自动解除广播。返回到期时间戳（ms epoch）；ms<=0 等价关闭 */
+  setDndFor(ms: number): number | null {
+    if (ms <= 0) {
+      this.setDnd(false)
+      return null
+    }
+    this.setDnd(true)
+    this.dndUntil = Date.now() + ms
+    if (this.dndTimer) clearTimeout(this.dndTimer)
+    this.dndTimer = setTimeout(() => {
+      this.dndTimer = null
+      this.dndUntil = null
+      this.setDnd(false)
+    }, ms)
+    return this.dndUntil
+  }
+
+  /** 定时勿扰剩余毫秒；非定时态返回 null */
+  get dndRemainingMs(): number | null {
+    if (!this.dnd || this.dndUntil === null) return null
+    return Math.max(0, this.dndUntil - Date.now())
   }
 
   setMuted(value: boolean): void {

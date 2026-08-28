@@ -115,7 +115,7 @@ export class HttpIngestAdapter implements AgentAdapter {
       this.json(res, 404, { code: 404, data: null, message: 'not found' })
       return
     }
-    if (!this.tokenMgr.verify(req.headers.authorization)) {
+    if (!this.tokenMgr.isAuthorizedBearer(req.headers.authorization)) {
       this.json(res, 401, { code: 401, data: null, message: 'unauthorized' })
       return
     }

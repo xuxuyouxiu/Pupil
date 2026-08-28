@@ -85,11 +85,9 @@ export class WindowManager {
     }
     win.once('ready-to-show', showBall)
     win.webContents.once('did-finish-load', () => setTimeout(showBall, 0))
-    // 拖动后记忆位置（节流：moved 事件已足够低频）
-    win.on('moved', () => {
-      const pos = win.getPosition()
-      this.config.set('ballPosition', { x: pos[0], y: pos[1] })
-    })
+    // 拖动后记忆位置：moved 事件在拖动期间高频触发，节流 500ms 合并写盘（v0.9.0）；
+    // 结束拖动时立即补一次最终位置，不丢尾
+    win.on('moved', () => this.scheduleBallSave())
     win.on('closed', () => {
       this.ball = null
     })
@@ -133,12 +131,22 @@ export class WindowManager {
   endDrag(): void {
     if (!this.dragState) return
     this.dragState = null
-    const win = this.ball
-    if (win && !win.isDestroyed()) {
-      const [x, y] = win.getPosition()
-      // 存窗口原点（含气泡带），与 createBallWindow 读入语义一致
-      this.config.set('ballPosition', { x, y })
-    }
+    // 存窗口原点（含气泡带），与 createBallWindow 读入语义一致；立即落盘不丢尾
+    this.scheduleBallSave()
+  }
+
+  /** 球位置保存节流（v0.9.0）：拖动期间 moved 高频触发，500ms 合并一次写盘 */
+  private ballSaveTimer: NodeJS.Timeout | null = null
+  private scheduleBallSave(): void {
+    if (this.ballSaveTimer) return
+    this.ballSaveTimer = setTimeout(() => {
+      this.ballSaveTimer = null
+      const win = this.ball
+      if (win && !win.isDestroyed()) {
+        const [x, y] = win.getPosition()
+        this.config.set('ballPosition', { x, y })
+      }
+    }, 500)
   }
 
   /** 打开面板（若已存在则聚焦）；返回是否新建 */

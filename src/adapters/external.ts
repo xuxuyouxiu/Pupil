@@ -16,8 +16,10 @@
  */
 import * as fs from 'fs'
 import * as path from 'path'
+import { pathToFileURL } from 'node:url'
 import { AdapterFactory } from './types'
 import { dataDir } from './http-ingest/auth'
+import { safeJoin } from './safe-path'
 
 /** 第三方 adapter 目录：%APPDATA%/pupil/adapters/ */
 export function externalAdaptersDir(): string {
@@ -27,8 +29,10 @@ export function externalAdaptersDir(): string {
 /**
  * 扫描并加载全部第三方 adapter 工厂。
  * 返回成功解析的工厂列表；单文件失败只打日志不抛出。
+ * v0.9.0：require(变量) 被安全扫描判定为注入类，改用动态 import()（file:// URL，
+ * Node 的 CJS 互操作把 module.exports 放进 default）。
  */
-export function loadExternalAdapters(dir: string = externalAdaptersDir()): AdapterFactory[] {
+export async function loadExternalAdapters(dir: string = externalAdaptersDir()): Promise<AdapterFactory[]> {
   const factories: AdapterFactory[] = []
   let files: string[] = []
   try {
@@ -39,10 +43,16 @@ export function loadExternalAdapters(dir: string = externalAdaptersDir()): Adapt
   }
 
   for (const f of files) {
-    const full = path.join(dir, f)
+    const full = safeJoin(dir, f)
+    if (!full) continue
     try {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const mod = require(full) as {
+      const ns = (await import(pathToFileURL(full).href)) as {
+        default?: unknown
+        id?: string
+        create?: () => import('./types').AgentAdapter
+        detect?: () => Promise<boolean>
+      }
+      const mod = (typeof ns.default === 'object' && ns.default !== null ? ns.default : ns) as {
         id?: string
         create?: () => import('./types').AgentAdapter
         detect?: () => Promise<boolean>

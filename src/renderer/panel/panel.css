@@ -719,3 +719,12 @@ body,
   filter: none;
   background: var(--surface-warm);
 }
+
+/* 定时勿扰倒计时（顶栏，v0.9.0） */
+.dnd-timer {
+  font-size: 11px;
+  color: var(--state-waiting);
+  font-variant-numeric: tabular-nums;
+  margin-right: 4px;
+  white-space: nowrap;
+}

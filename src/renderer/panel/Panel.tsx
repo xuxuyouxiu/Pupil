@@ -51,6 +51,8 @@ export function Panel() {
   const sessions = useSessions()
   const [tab, setTab] = useState<Tab>('sessions')
   const [dnd, setDnd] = useState(false)
+  /** 定时勿扰剩余毫秒（null = 非定时） */
+  const [dndRemain, setDndRemain] = useState<number | null>(null)
   /** 面板内嵌设置视图（用户偏好：点设置在悬浮窗内展开，不弹独立窗口） */
   const [showSettings, setShowSettings] = useState(false)
   const rootRef = useRef<HTMLDivElement | null>(null)
@@ -70,7 +72,16 @@ export function Panel() {
   useEffect(() => {
     void window.pupil.getDnd().then(setDnd)
     const off = window.pupil.onDndChanged(setDnd)
-    return off
+    // v0.9.0 定时勿扰倒计时：每秒拉剩余毫秒，仅勿扰激活期间有意义
+    const tick = (): void => {
+      void window.pupil.getDndRemaining().then((ms) => setDndRemain(ms))
+    }
+    tick()
+    const timer = setInterval(tick, 1000)
+    return () => {
+      off()
+      clearInterval(timer)
+    }
   }, [])
 
 
@@ -105,9 +116,15 @@ export function Panel() {
           )}
         </div>
         <div className="top-actions">
+          {dndRemain !== null && (
+            <span className="dnd-timer" title="定时勿扰剩余时间">
+              勿扰 {formatDuration(dndRemain)}
+            </span>
+          )}
           <button
             className={`icon-btn ${dnd ? 'active' : ''}`}
             aria-label="切换勿扰模式"
+            title="左键开关勿扰；球右键可选定时勿扰"
             onClick={() => void window.pupil.toggleDnd().then(setDnd)}
           >
             <Moon size={16} />
