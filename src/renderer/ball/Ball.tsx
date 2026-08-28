@@ -37,30 +37,23 @@ function aggregateState(views: SessionView[]): DisplayState {
     .sort((a, b) => DISPLAY_PRIORITY[b] - DISPLAY_PRIORITY[a])[0]
 }
 
-/** bloub 三点横向几何（球半径单位 × 21px）——弹跳球沿用同一横向节奏 */
-const DOT_X = [-11.7, -0.3, 11.2]
-/** 点半径（bloub 0.165 × 21px ≈ 3.5） */
-const DOT_R = 3.5
-
 /**
- * 三点波浪加载（v0.5.2 换回官方：用户反馈「加载图标是网上找的，换官方的看看」）。
- * 对照 bloub dotPulse 测量：三白点横向 -0.557/-0.013/+0.532（×21px），r=0.165×21≈3.5，
- * 1.5s 一轮、相位差 0.5s、峰值 ×1.25 + opacity 0.55→1（半余弦「跳一下歇一下」），
- * 波从左到右扫过。黑色球体留在原地当底板（v0.4.5），白点任何壁纸都有对比度。
+ * v1.0.1 思考动画：三轴环绕轨道环（参考 grok-icon-study 的 gizmo-orbit）。
+ * 细描边环（r=26，球 r21 外圈）绕 Z 轴异速进动；x 环 rotateX 压扁为主视环，
+ * y 环 rotateY 立向，z 环平铺最弱——前后层透明度差复刻原版的纵深感。
  */
-function ThinkingDots() {
+function ThinkingOrbit() {
   return (
-    <g>
-      {[0, 1, 2].map((i) => (
-        <circle
-          key={i}
-          className={`tdot tdot-${i}`}
-          cx={28 + DOT_X[i]}
-          cy={28}
-          r={i === 1 ? DOT_R * 1.06 : DOT_R}
-          fill="var(--eye-white)"
-        />
-      ))}
+    <g className="think-orbits" aria-hidden>
+      <g className="orb o-z">
+        <circle cx={28} cy={28} r={26} className="orb-ring" />
+      </g>
+      <g className="orb o-y">
+        <circle cx={28} cy={28} r={26} className="orb-ring" />
+      </g>
+      <g className="orb o-x">
+        <circle cx={28} cy={28} r={26} className="orb-ring" />
+      </g>
     </g>
   )
 }
@@ -298,7 +291,7 @@ export function Ball() {
             }${pokePulse > 0 && mood !== 'dizzy' ? ' ball-poke' : ''}`}
           />
           {/* v0.4.5 变形/加载层（画在球体之后 = 黑球底板之上） */}
-          {display === 'running' && <ThinkingDots />}
+          {display === 'running' && <ThinkingOrbit />}
           {display === 'error' && <Exclaim />}
           {/* 中心：精灵眼（互动 mood 优先；变形态由 EyeSystem 内部返回 null） */}
           <g className="eye-layer">
