@@ -209,7 +209,6 @@ body {
 .think-orbit .orb-ball {
   fill: var(--eye-white);
 }
-}
 
 /* 感叹号滑入：-1.8px → +15.4px（原版 -0.087→+0.732 球半径）1.5s ease-in-out，
    2s 处 0.4s 弹回中位，循环；叠加 2.5Hz 微震（原版 buzz 测量） */
