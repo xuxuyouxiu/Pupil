@@ -92,8 +92,25 @@ export function mapLine(line: Record<string, unknown>): AgentEvent[] {
 
   const type = line.type
   const message = line.message as
-    | { role?: string; content?: string | Record<string, unknown>[]; stop_reason?: string }
+    | {
+        role?: string
+        content?: string | Record<string, unknown>[]
+        stop_reason?: string
+        usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number }
+      }
     | undefined
+
+  /** v0.11.0 token 用量：assistant 消息的 message.usage（含缓存读/写） */
+  const usagePayload = (() => {
+    const u = message?.usage
+    if (!u || typeof u !== 'object') return undefined
+    const inputTokens = Number(u.input_tokens ?? 0)
+    const outputTokens = Number(u.output_tokens ?? 0)
+    const cacheReadTokens = Number(u.cache_read_input_tokens ?? 0)
+    const cacheCreationTokens = Number(u.cache_creation_input_tokens ?? 0)
+    if (!inputTokens && !outputTokens && !cacheReadTokens && !cacheCreationTokens) return undefined
+    return { inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens }
+  })()
 
   if (type === 'user') {
     const content = message?.content
@@ -133,6 +150,11 @@ export function mapLine(line: Record<string, unknown>): AgentEvent[] {
     }
     if (message?.stop_reason === 'end_turn') {
       events.push({ ...base, eventType: 'turn_completed', payload: { raw: line } })
+    }
+    // 该行的请求级用量挂到最后一个派生事件（一行 assistant 消息 = 一次模型请求）
+    if (usagePayload && events.length > 0) {
+      const i = events.length - 1
+      events[i] = { ...events[i], payload: { ...(events[i].payload ?? {}), usage: usagePayload } }
     }
   }
 

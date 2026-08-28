@@ -2,6 +2,14 @@
 
 本文件记录 Pupil 的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.11.0] - 2026-08-27
+
+> 路线图批次三「数据智能」全部落地（docs/ROADMAP-v1.md）
+
+### 新增
+- **token 用量采集与展示**：Claude Code 日志的 `message.usage`（含缓存读/写）随事件流入库，会话级累计「本轮 / 总计」；面板会话行时长后追加 `· 12.3k · $0.08`（累计 tokens 与美元成本）。定价表注入式：内置 claude-code 系单价（$3/$15 每百万），其余 agent 或自定义模型用 config.json 的 `pricing` 字段覆盖，未配置的 agent 不显示价格。Hermes messages 表无 tokens 列（标记不适用）
+- **每日简报**：默认每天 21:00（config.digestHour 可改）弹一条通知——「完成 N · 出错 M · 运行 Xh Ym · tokens Zk」；实现为 core/digest.ts 纯类（注入时钟，6 个单测：到点触发/同日一次/空日不报/隔日循环/用量侧账），计数内存按日累计（重启丢失可接受的 MVP 决策）；勿扰时静默
+
 ## [0.10.0] - 2026-08-27
 
 > 路线图批次二「核心卖点」全部落地（docs/ROADMAP-v1.md）

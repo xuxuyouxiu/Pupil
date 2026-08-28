@@ -728,3 +728,8 @@ body,
   margin-right: 4px;
   white-space: nowrap;
 }
+
+/* 会话行 token 用量（v0.11.0） */
+.usage {
+  color: var(--meta);
+}

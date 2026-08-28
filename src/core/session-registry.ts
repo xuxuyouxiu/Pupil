@@ -9,11 +9,13 @@ import { transitionState } from './state-machine'
 import {
   AgentEvent,
   AgentType,
+  ModelPricing,
   SessionFlags,
   SessionHistoryItem,
   SessionState,
   SessionView,
-  sessionKey
+  sessionKey,
+  TokenUsage
 } from '../shared/events'
 import { EVENT_RING_BUFFER_SIZE, DONE_HOLD_MS_DEFAULT, RESTORED_RETENTION_MS, SESSION_ENDED_RETENTION_MS } from '../shared/constants'
 
@@ -55,6 +57,12 @@ interface SessionRecord {
    * 会话复活（任何非 heartbeat 事件到达）即清除。
    */
   endedAt?: number
+
+  /** v0.11.0 token 用量累计：本轮（turn_started 重置）与会话总计 */
+  turnIn: number
+  turnOut: number
+  totalIn: number
+  totalOut: number
 }
 
 /** 由 cwd 推导展示名（目录名），无 cwd 时回退会话 ID 前缀 */
@@ -73,6 +81,13 @@ export class SessionRegistry {
   private historyStore: HistoryStore | null = null
   /** 脏标记：有新事件才落盘（saveHistory 幂等可安全重复调用） */
   private historyDirty = false
+  /** v0.11.0 定价函数（monitoring-core 注入；未注入时成本为 0） */
+  private pricingFn: ((agentType: AgentType) => ModelPricing | undefined) | null = null
+
+  /** 注入定价表（美元/百万 token），用于 SessionView 成本投影 */
+  setPricing(fn: (agentType: AgentType) => ModelPricing | undefined): void {
+    this.pricingFn = fn
+  }
 
   /** 注入历史持久化钩子并恢复上次退出前的历史（P2-8） */
   setHistoryStore(store: HistoryStore): void {
@@ -101,7 +116,11 @@ export class SessionRegistry {
           title: it.title,
           prevState: 'idle',
           restoredOnly: true,
-          events: []
+          events: [],
+          turnIn: 0,
+          turnOut: 0,
+          totalIn: 0,
+          totalOut: 0
         }
         this.sessions.set(key, rec)
       }
@@ -148,7 +167,11 @@ export class SessionRegistry {
         pid: event.payload?.pid,
         title: event.payload?.title ?? deriveTitle(event.sessionId, event.cwd),
         prevState: 'idle',
-        events: []
+        events: [],
+        turnIn: 0,
+        turnOut: 0,
+        totalIn: 0,
+        totalOut: 0
       }
       this.sessions.set(key, rec)
     }
@@ -211,6 +234,19 @@ export class SessionRegistry {
       rec.events.splice(0, rec.events.length - EVENT_RING_BUFFER_SIZE)
     }
     this.historyDirty = true
+
+    // v0.11.0 用量累计：turn_started 重置本轮窗口；任何带 usage 的事件都入账
+    if (event.eventType === 'turn_started') {
+      rec.turnIn = 0
+      rec.turnOut = 0
+    }
+    const u: TokenUsage | undefined = event.payload?.usage
+    if (u) {
+      rec.turnIn += u.inputTokens + (u.cacheCreationTokens ?? 0)
+      rec.turnOut += u.outputTokens
+      rec.totalIn += u.inputTokens + (u.cacheCreationTokens ?? 0) + (u.cacheReadTokens ?? 0)
+      rec.totalOut += u.outputTokens
+    }
 
     // session_ended 后由推断 tick 调用 prune() 延迟清除（见 SESSION_ENDED_RETENTION_MS）
     return this.toView(rec)
@@ -326,6 +362,20 @@ export class SessionRegistry {
     // 状态机仍落 idle；timeout/disconnected 标记优先级更高（toDisplayState 先看 flags）。
     if (rec.state === 'idle' && rec.doneAt !== undefined && now < rec.doneAt + DONE_HOLD_MS_DEFAULT) {
       view.state = 'done'
+    }
+    // v0.11.0 用量与成本投影（定价未配置的 agent 成本为 0，前端据此隐藏成本）
+    if (rec.totalIn > 0 || rec.totalOut > 0) {
+      const p = this.pricingFn?.(rec.agentType)
+      const cost = (inToks: number, outToks: number): number =>
+        p ? (inToks * p.inputPer1M + outToks * p.outputPer1M) / 1_000_000 : 0
+      view.usage = {
+        turnIn: rec.turnIn,
+        turnOut: rec.turnOut,
+        totalIn: rec.totalIn,
+        totalOut: rec.totalOut,
+        costTurn: cost(rec.turnIn, rec.turnOut),
+        costTotal: cost(rec.totalIn, rec.totalOut)
+      }
     }
     return view
   }

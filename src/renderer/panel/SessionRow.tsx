@@ -47,6 +47,11 @@ function activity(view: SessionView): string {
   }
 }
 
+/** v0.11.0 token 数格式化：1234 -> 1.2k */
+function fmtTokens(n: number): string {
+  return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n)
+}
+
 export function SessionRow({ view }: { view: SessionView }) {
   const [hover, setHover] = useState(false)
   const [notFound, setNotFound] = useState(false)
@@ -104,7 +109,16 @@ export function SessionRow({ view }: { view: SessionView }) {
           )}
         </div>
       </div>
-      <span className="duration">{formatDuration(runningMs)}</span>
+      <span className="duration">
+        {formatDuration(runningMs)}
+        {view.usage && view.usage.totalIn + view.usage.totalOut > 0 && (
+          <span className="usage" title="会话累计 tokens 与成本">
+            {' · '}
+            {fmtTokens(view.usage.totalIn + view.usage.totalOut)}
+            {view.usage.costTotal > 0 ? ` · $${view.usage.costTotal.toFixed(2)}` : ''}
+          </span>
+        )}
+      </span>
       <button
         className={`jump-btn ${hover ? 'visible' : ''}`}
         aria-label="跳转会话窗口"

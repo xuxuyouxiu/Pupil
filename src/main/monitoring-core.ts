@@ -19,7 +19,8 @@ import { HooksInstaller, buildHookCommand } from '../adapters/claude-code/hooks-
 import { SessionRegistry } from '../core/session-registry'
 import { InferenceEngine } from '../core/inference'
 import { resolveStrategy, notifyAllowed } from '../core/notify-rules'
-import { AgentEvent, NotifyFilter, NOTIFY_FILTER_DEFAULTS, SessionHistoryItem, SessionView, sessionKey } from '../shared/events'
+import { DailyDigest, DigestSummary } from '../core/digest'
+import { AgentEvent, ModelPricing, NotifyFilter, NOTIFY_FILTER_DEFAULTS, SessionHistoryItem, SessionView, sessionKey } from '../shared/events'
 import { SettingsSnapshot, AdapterStatus } from '../shared/ipc-channels'
 import { ConfigStore } from './config'
 
@@ -32,6 +33,14 @@ const ADAPTER_LABELS: Record<string, string> = {
   'hermes-sqlite': 'Hermes',
   'dsh-api': 'DSH（Web API）',
   'zcode-rollout': 'ZCode（会话记录）'
+}
+
+/**
+ * v0.11.0 内置单价（美元/百万 token）。仅列出有把握的 claude 系参考价；
+ * 其他 agent 或自定义模型请用 config.json 的 `pricing` 覆盖（不配置则不显示成本）
+ */
+const DEFAULT_PRICING: Partial<Record<string, ModelPricing>> = {
+  'claude-code': { inputPer1M: 3, outputPer1M: 15 }
 }
 
 /** 通知策略执行器（由 main 注入：播放音效 + 弹 Toast） */
@@ -54,6 +63,8 @@ export class MonitoringCore {
   private dndTimer: NodeJS.Timeout | null = null
   /** v0.9.0 单会话静音：sessionKey 集合 */
   private mutedSessions: Set<string>
+  /** v0.11.0 每日简报 */
+  private digest: DailyDigest
   /** v0.8.0 通知粒度开关：按事件类别关闭音效+通知（视觉状态不受影响） */
   private notifyFilter: NotifyFilter
   /** v0.5.0：上一 tick 是否存在 done 保持态（用于检测窗口到期触发回落广播） */
@@ -69,6 +80,11 @@ export class MonitoringCore {
     this.muted = config.get('muted') ?? false
     this.notifyFilter = config.get('notifyEvents') ?? {}
     this.mutedSessions = new Set(config.get('mutedSessions') ?? [])
+    // v0.11.0 定价注入：config.pricing[agentType] 覆盖内置默认（claude-code 系单价）
+    const customPricing = config.get('pricing') ?? {}
+    this.registry.setPricing((agentType) => customPricing[agentType] ?? DEFAULT_PRICING[agentType])
+    // v0.11.0 每日简报：默认每天 21:00（config.digestHour 覆盖）
+    this.digest = new DailyDigest(config.get('digestHour') ?? 21, (s) => this.emitDigest(s))
     this.inference = new InferenceEngine(this.registry, {
       timeoutThresholdMs: config.get('timeoutThresholdMs') ?? 10 * 60 * 1000,
       disconnectThresholdMs: config.get('disconnectThresholdMs') ?? 30 * 1000,
@@ -154,6 +170,8 @@ export class MonitoringCore {
       this.doneHoldActive = anyDone
       // 过期会话清理（session_ended 宽限期 / 历史恢复条目保留期）
       const pruned = this.registry.prune(Date.now())
+      // v0.11.0 每日简报：到点触发
+      this.digest.tick()
       if (changed.length > 0 || doneExpired || pruned > 0) this.broadcast()
     }, 1000)
   }
@@ -192,16 +210,58 @@ export class MonitoringCore {
 
   /** 事件入口（adapter 上报） */
   private onEvent(event: AgentEvent): void {
-    const view = this.registry.apply(event)
     const key = sessionKey(event.agentType, event.sessionId)
-    // v0.9.0 单会话静音：被忽略会话不发声不弹 Toast（broadcast 照常，视觉保留）
+    // 每日简报入账要在 registry 应用前取上一轮起点（turn_completed 会清 turnStartedAt）
+    const prevTurnStartedAt = this.registry.get(key)?.turnStartedAt
+    const view = this.registry.apply(event)
     const sessionMuted = this.mutedSessions.has(key)
-    // v0.8.0 通知粒度：类别被用户关闭时不发声不弹 Toast（broadcast 照常，视觉保留）
+    // v0.9.0 单会话静音 + v0.8.0 通知粒度：被忽略的路径不发声不弹 Toast（broadcast 照常，视觉保留）
     if (!this.dnd && !sessionMuted && notifyAllowed(event.eventType, this.notifyFilter)) {
       const strategy = resolveStrategy(event, view, { dnd: this.dnd, muted: this.muted })
       this.notifyExecutor?.(strategy, event, view)
     }
+    // v0.11.0 每日简报入账
+    this.digest.onEvent(event.eventType, {
+      runMs:
+        event.eventType === 'turn_completed' && prevTurnStartedAt !== undefined
+          ? Math.max(0, event.timestamp - prevTurnStartedAt)
+          : 0,
+      usage: event.payload?.usage
+    })
     this.broadcast()
+  }
+
+  /** v0.11.0 每日简报出口：勿扰时静默；sound 恒 false（只弹通知） */
+  private emitDigest(s: DigestSummary): void {
+    if (this.dnd) return
+    const hours = Math.floor(s.runMs / 3_600_000)
+    const mins = Math.round((s.runMs % 3_600_000) / 60_000)
+    const tokens = s.tokensIn + s.tokensOut
+    const body = [
+      `完成 ${s.completed} · 出错 ${s.errors}`,
+      s.runMs > 0 ? `运行 ${hours}h ${mins}m` : '',
+      tokens > 0 ? `tokens ${(tokens / 1000).toFixed(1)}k` : ''
+    ]
+      .filter(Boolean)
+      .join(' · ')
+    this.notifyExecutor?.(
+      {
+        displayState: 'done',
+        sound: false,
+        soundType: null,
+        toast: true,
+        title: 'Pupil 今日简报',
+        body
+      },
+      {
+        source: 'digest',
+        agentType: 'custom',
+        sessionId: 'daily-digest',
+        eventType: 'heartbeat',
+        timestamp: Date.now()
+      },
+      undefined
+    )
   }
 
   /** v0.9.0 单会话静音：切换指定会话的通知忽略状态并持久化。返回切换后是否被忽略 */

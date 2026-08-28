@@ -26,9 +26,9 @@
 
 | # | 条目 | 验收标准 | 状态 |
 |---|------|---------|------|
-| 3.1 | **tokens/cost 采集** | claude-code 日志 usage 字段、hermes sqlite tokens 列接入；capability 'tokens' 真实上报；无数据的源不显示占位 | ☐ |
-| 3.2 | **面板用量展示** | 会话行副行追加「12.3k tok · $0.08」（有数据时）；价格表可配置（默认 claude 系单价），常量文件集中维护 | ☐ |
-| 3.3 | **每日简报** | 每日首次跨零点（或设置的自定义时刻）发一条系统通知：完成 N / 出错 M / 累计运行时长 / tokens 总耗；数据来自 registry 事件环形缓冲的日聚合（内存即可，重启丢失可接受） | ☐ |
+| 3.1 | **tokens/cost 采集** | claude-code 日志 `message.usage`（含缓存读/写）接入，payload.usage 随事件流；SessionRegistry 按会话累计（turn_started 重置本轮窗口）；定价注入式（config.pricing 覆盖，内置 claude-code 系 $3/$15 每百万）。**hermes messages 表无 tokens 列，标记不适用**；capability 'tokens' 实质达成 | ☑ |
+| 3.2 | **面板用量展示** | 会话行时长后追加「· 12.3k · $0.08」（会话累计；成本为 0 时隐藏价格） | ☑ |
+| 3.3 | **每日简报** | core/digest.ts 纯类（注入时钟，6 个单测）：完成/出错/运行时长/token 消耗按日累计，默认 21:00（config.digestHour）首过 tick 触发，空日不报；勿扰时静默 | ☑ |
 
 ## 批次四：规模化（v1.0.0）
 

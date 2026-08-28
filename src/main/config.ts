@@ -5,7 +5,7 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import { dataDir } from '../adapters/http-ingest/auth'
-import { NotifyFilter } from '../shared/events'
+import { AgentType, ModelPricing, NotifyFilter } from '../shared/events'
 
 export interface AppConfig {
   /** 悬浮球窗口位置（屏幕坐标，v0.5.0 起为含气泡带的窗口原点） */
@@ -33,6 +33,10 @@ export interface AppConfig {
   notifyEvents?: NotifyFilter
   /** v0.9.0 单会话静音：被忽略会话的 sessionKey 列表（正常显示状态，不发声不弹通知） */
   mutedSessions?: string[]
+  /** v0.11.0 模型单价覆盖（美元/百万 token）：{ "claude-code": { inputPer1M: 3, outputPer1M: 15 } } */
+  pricing?: Partial<Record<AgentType, ModelPricing>>
+  /** v0.11.0 每日简报触发时刻（0-23，本地时区，默认 21） */
+  digestHour?: number
 }
 
 const DEFAULTS: AppConfig = {

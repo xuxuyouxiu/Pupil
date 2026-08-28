@@ -26,7 +26,36 @@ export interface AgentEventPayload {
   modelName?: string // thinking
   pid?: number // 上报方附带的进程号（用于窗口跳转）
   title?: string // 轮询型源（hermes/codex）附带的真实会话标题（面板展示 + 窗口匹配）
+  /** v0.11.0 模型请求级 token 用量（assistant 消息行附带） */
+  usage?: TokenUsage
   raw?: unknown // 原始行/事件，调试用
+}
+
+/** 单次模型请求的 token 用量 */
+export interface TokenUsage {
+  inputTokens: number
+  outputTokens: number
+  cacheReadTokens?: number
+  cacheCreationTokens?: number
+}
+
+/** 单价（美元 / 百万 token） */
+export interface ModelPricing {
+  inputPer1M: number
+  outputPer1M: number
+}
+
+/** 会话累计用量视图（v0.11.0，registry 投影） */
+export interface UsageView {
+  /** 本轮 input/output token */
+  turnIn: number
+  turnOut: number
+  /** 会话累计 input/output token */
+  totalIn: number
+  totalOut: number
+  /** 按定价表计算的美元成本（未配置定价的 agent 为 0） */
+  costTurn: number
+  costTotal: number
 }
 
 /** 统一事件 */
@@ -62,6 +91,8 @@ export interface SessionView {
   lastEventAt: number
   title?: string // 展示名（目录名/任务名）
   pid?: number
+  /** v0.11.0 会话用量与成本（无用量数据时不出现） */
+  usage?: UsageView
 }
 
 /** 事件历史条目（事件历史页签用，由 SessionRegistry 环形缓冲投影） */
