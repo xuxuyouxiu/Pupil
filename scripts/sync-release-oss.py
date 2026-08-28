@@ -40,6 +40,7 @@ def main() -> None:
         ("latest.yml", "no-cache"),
     ]
 
+    # v1.0.5 顺序优化：latest.yml 最先上传（缩小应用内 feed 的过期窗口）
     for fname, cache in targets:
         local = os.path.join(dist, fname)
         if not os.path.exists(local):
@@ -50,19 +51,15 @@ def main() -> None:
 
     # v1.0.0 固定目录副本（exe/blockmap + latest.yml 同目录）：
     # electron-updater generic provider 以 latest.yml 所在目录解析相对文件 URL，
-    # 该目录即应用内更新的首选 feed（差量更新依赖同目录 blockmap）
+    # 该目录即应用内更新的首选 feed（差量更新依赖同目录 blockmap）。
+    # v1.0.5 改服务端复制（同 bucket 内秒级完成），取代 170MB 的跨洋二次上传
     for fname, cache in targets:
-        local = os.path.join(dist, fname)
-        if not os.path.exists(local):
-            continue
         key = f"download/pupil/{fname}"
-        bucket.put_object_from_file(key, local, headers={"CacheControl": cache})
-        print(f"[sync-oss] OK {key}")
+        bucket.copy_object("podmuse", f"download/v{version}/{fname}", key)
+        print(f"[sync-oss] OK(copy) {key}")
 
     # 固定路径副本（不带版本号）：供官网/外部探测「最新版本号」
-    bucket.put_object_from_file(
-        "download/pupil/latest.yml", os.path.join(dist, "latest.yml"), headers={"CacheControl": "no-cache"}
-    )
+    bucket.copy_object("podmuse", f"download/v{version}/latest.yml", "download/pupil/latest.yml")
     print("[sync-oss] OK download/pupil/latest.yml")
 
     # 校验 latest.yml 可读且含版本号（防传错文件）
