@@ -1,25 +1,14 @@
 /**
  * 系统托盘 —— 显示/隐藏悬浮球、勿扰、设置、退出
- * v0.10.0：托盘图标跟随最高优先级状态着色，悬停显示「N 运行 · N 等待 …」摘要
+ * v1.0.4：图标恢复原始静态（状态色已上悬浮球本体，托盘通常隐藏 coloring 无意义），
+ * 悬停摘要保留
  */
 import { Menu, Tray, nativeImage, app } from 'electron'
 import { MonitoringCore } from './monitoring-core'
 import { WindowManager } from './window-manager'
 import { resourcePath } from './paths'
-import { DisplayState, DISPLAY_PRIORITY, toDisplayState } from '../shared/events'
+import { DisplayState, toDisplayState } from '../shared/events'
 import { t } from '../shared/i18n'
-
-/** 与 theme.css 状态色保持一致 */
-const STATE_COLORS: Record<DisplayState, string> = {
-  running: '#3b82f6',
-  waiting: '#d29922',
-  done: '#3fb950',
-  error: '#f85149',
-  timeout: '#db6d28',
-  offline: '#8b949e',
-  initializing: '#8b949e',
-  idle: '#8b949e'
-}
 
 const STATE_LABEL_KEYS: Partial<Record<DisplayState, 'stateRunning' | 'stateWaiting' | 'stateDone' | 'stateError' | 'stateTimeout' | 'stateOffline'>> = {
   running: 'stateRunning',
@@ -30,38 +19,11 @@ const STATE_LABEL_KEYS: Partial<Record<DisplayState, 'stateRunning' | 'stateWait
   offline: 'stateOffline'
 }
 
-/** 勿扰时托盘一律灰色（不泄露状态细节，符合"勿扰"语义） */
-const DND_COLOR = '#8b949e'
-
-/** 生成 16×16 实心圆托盘图标（BGRA 原点位图） */
-function stateIcon(hex: string): Electron.NativeImage {
-  const size = 16
-  const buf = Buffer.alloc(size * size * 4)
-  const r = parseInt(hex.slice(1, 3), 16)
-  const g = parseInt(hex.slice(3, 5), 16)
-  const b = parseInt(hex.slice(5, 7), 16)
-  const c = (size - 1) / 2
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const i = (y * size + x) * 4
-      const inside = (x - c) ** 2 + (y - c) ** 2 <= (size / 2 - 1.2) ** 2
-      if (inside) {
-        buf[i] = b
-        buf[i + 1] = g
-        buf[i + 2] = r
-        buf[i + 3] = 0xff
-      }
-    }
-  }
-  const img = nativeImage.createFromBitmap(buf, { width: size, height: size })
-  return img.isEmpty() ? nativeImage.createEmpty() : img
-}
-
 export class TrayManager {
   private tray: Tray | null = null
   private unsubscribe: (() => void) | null = null
-  /** 上次渲染的状态签名：无变化不重绘（订阅回调可能高频触发） */
-  private lastSignature = ''
+  /** 上次渲染的悬停摘要签名：无变化不重设 */
+  private lastTooltip = ''
 
   constructor(
     private core: MonitoringCore,
@@ -79,22 +41,19 @@ export class TrayManager {
       this.windows.openPanel()
     })
 
-    // v0.10.0 状态化：订阅快照，着色 + 摘要（内部有签名去重）
-    this.unsubscribe = this.core.subscribe(() => this.refreshState())
-    this.refreshState()
+    // 悬停摘要：订阅快照（内部有签名去重）
+    this.unsubscribe = this.core.subscribe(() => this.refreshTooltip())
   }
 
-  /** 按最高优先级状态着色 + 悬停摘要 */
-  refreshState(): void {
+  /** 悬停摘要：「2 运行 · 1 等待 · 1 完成」，勿扰时前缀 🌙 */
+  private refreshTooltip(): void {
     if (!this.tray) return
     const views = this.core.snapshot()
     const counts = new Map<DisplayState, number>()
-    let top: DisplayState = 'idle'
     for (const v of views) {
       const d = toDisplayState(v)
       if (d === 'initializing') continue
       counts.set(d, (counts.get(d) ?? 0) + 1)
-      if (d !== 'idle' && DISPLAY_PRIORITY[d] > DISPLAY_PRIORITY[top]) top = d
     }
 
     const parts: string[] = []
@@ -105,13 +64,8 @@ export class TrayManager {
 
     const dnd = this.core.isDnd
     const tooltip = `Pupil — ${dnd ? `🌙 ${t('dnd')} · ` : ''}${parts.length ? parts.join(' · ') : t('noActiveSessions')}`
-
-    const signature = `${dnd ? 'dnd:' : ''}${top}:${tooltip}`
-    if (signature === this.lastSignature) return
-    this.lastSignature = signature
-
-    const color = dnd ? DND_COLOR : STATE_COLORS[top]
-    this.tray.setImage(stateIcon(color))
+    if (tooltip === this.lastTooltip) return
+    this.lastTooltip = tooltip
     this.tray.setToolTip(tooltip)
   }
 

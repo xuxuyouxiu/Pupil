@@ -203,38 +203,12 @@ body {
   transform: scale(0);
 }
 
-/* v1.0.2 思考动画：中心球 + 五球环绕（grok-icon-study orbit 状态，周期 3.2s）。
-   五臂均布 72° 公转；小球按公转相位做远近脉动（近侧放大提亮、远侧缩小减淡），
-   动画延迟 -i*0.64s 让每球的"最近点"精确错开 1/5 周期。黑球留原地当底板 */
-.think-orbit .orb-arm {
-  transform-origin: 28px 28px;
-  transform-box: view-box;
-  animation: orb-arm-spin 3.2s linear infinite;
-}
-@keyframes orb-arm-spin {
-  from {
-    transform: rotate(var(--base));
-  }
-  to {
-    transform: rotate(calc(var(--base) + 360deg));
-  }
-}
-.orb-ball {
+/* v1.0.4 思考动画：五球环绕已改为 rAF 逐帧驱动（Ball.tsx ThinkingOrbit，
+   公式逐项移植原版 paintOrbit：轨道 52K/球 12K/压缩 0.42/深度与透明度公式），
+   CSS 只保留填充色 */
+.think-orbit .orb-ball {
   fill: var(--eye-white);
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: orb-ball-pulse 3.2s linear infinite;
 }
-@keyframes orb-ball-pulse {
-  0%,
-  100% {
-    transform: scale(0.5);
-    opacity: 0.3;
-  }
-  50% {
-    transform: scale(1);
-    opacity: 1;
-  }
 }
 
 /* 感叹号滑入：-1.8px → +15.4px（原版 -0.087→+0.732 球半径）1.5s ease-in-out，
@@ -528,5 +502,25 @@ body {
   50% {
     transform: scale(0.86);
     opacity: 0.82;
+  }
+}
+
+/* v1.0.4 状态色环（notifying 风格）：贴球细环脉冲，颜色随聚合状态 */
+.state-ring {
+  fill: none;
+  stroke-width: 1.6;
+  transform-origin: 28px 28px;
+  transform-box: view-box;
+  animation: state-ring-pulse 1.8s ease-in-out infinite;
+}
+@keyframes state-ring-pulse {
+  0%,
+  100% {
+    transform: scale(0.97);
+    opacity: 0.55;
+  }
+  50% {
+    transform: scale(1.035);
+    opacity: 0.95;
   }
 }

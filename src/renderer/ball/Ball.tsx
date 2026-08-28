@@ -38,29 +38,49 @@ function aggregateState(views: SessionView[]): DisplayState {
 }
 
 /**
- * v1.0.2 思考动画：中心球 + 五颗小球环绕（参考 grok-icon-study 的 orbit 状态，
- * 周期 3.2s 与原版一致）。五球均布 72°，随公转位置做远近脉动——
- * 转到近侧（下方）放大提亮、远侧缩小减淡，复刻 3D 环绕的纵深错觉。
+ * v1.0.2→v1.0.4 思考动画：按 grok-icon-study 原版 paintOrbit 公式逐项移植
+ * （fx.js paintOrbit + geometry-raw Re=114.2705，等比缩放到我们的球 r21）：
+ *   轨道半径 52K、球基准 12K、纵向压缩 0.42、相位速度 0.0017 rad/ms（≈3.695s/圈）
+ *   深度 dn = 0.5+0.5·max(cos,0)，透明度 = clamp((cos+0.4)/0.6, .18, 1)
+ *   入场混合 ze：Rc=easeOutCubic、半径过冲 y1e=easeOutBack
+ * 五球在黑球内部环绕（原版即如此），rAF 逐帧 setAttribute 与原引擎同方式。
  */
+const GEO_K = 21 / 114.2705
+
 function ThinkingOrbit() {
-  const R = 24
-  const PERIOD = 3.2
+  const gRef = useRef<SVGGElement | null>(null)
+
+  useEffect(() => {
+    const g = gRef.current
+    if (!g) return
+    const balls = Array.from(g.querySelectorAll<SVGCircleElement>('.orb-ball'))
+    const clamp01 = (v: number): number => Math.min(1, Math.max(0, v))
+    const t0 = performance.now()
+    let raf = 0
+    const frame = (t: number): void => {
+      const ze = clamp01((t - t0) / 450)
+      const mt = 1 - Math.pow(1 - ze, 3) // Rc：入场 easeOutCubic
+      const A = 52 * GEO_K * (1 + 2.70158 * Math.pow(ze - 1, 3) + 1.70158 * Math.pow(ze - 1, 2)) // y1e 过冲
+      const phase = t * 0.0017
+      balls.forEach((c, i) => {
+        const En = phase + (i * Math.PI * 2) / 5
+        const Zt = Math.cos(En)
+        const dn = 0.5 + 0.5 * clamp01(Zt)
+        c.setAttribute('cx', (28 + A * Math.sin(En)).toFixed(1))
+        c.setAttribute('cy', (28 - A * 0.42 * Math.cos(En)).toFixed(1))
+        c.setAttribute('r', Math.max(12 * GEO_K * dn * mt, 0.3).toFixed(2))
+        c.setAttribute('opacity', (clamp01((Zt + 0.4) / 0.6) * mt).toFixed(3))
+      })
+      raf = requestAnimationFrame(frame)
+    }
+    raf = requestAnimationFrame(frame)
+    return () => cancelAnimationFrame(raf)
+  }, [])
+
   return (
-    <g className="think-orbit" aria-hidden>
+    <g className="think-orbit" ref={gRef} aria-hidden>
       {[0, 1, 2, 3, 4].map((i) => (
-        <g
-          key={i}
-          className="orb-arm"
-          style={{ '--base': `${i * 72}deg`, animationDelay: '0s' } as React.CSSProperties}
-        >
-          <circle
-            className="orb-ball"
-            cx={28}
-            cy={28 - R}
-            r={3.2}
-            style={{ animationDelay: `${(-i * 0.2 * PERIOD).toFixed(2)}s` }}
-          />
-        </g>
+        <circle key={i} className="orb-ball" cx={28} cy={28} r={0} fill="var(--eye-white)" />
       ))}
     </g>
   )
@@ -321,6 +341,11 @@ export function Ball() {
                 />
               </g>
             </>
+          )}
+          {/* v1.0.4 状态色环（notifying 风格）：聚合状态非 idle 时球外圈着色脉冲，
+              颜色随聚合状态变化——取代托盘状态色（托盘通常隐藏看不到） */}
+          {display !== 'idle' && (
+            <circle className="state-ring" cx={28} cy={28} r={24.5} stroke={`var(--state-${display})`} />
           )}
           {/* v0.10.0 多会话徽标：左上角数字（活跃会话 ≥2 时显示），颜色随聚合状态 */}
           {activeCount >= 2 && (

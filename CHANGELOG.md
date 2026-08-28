@@ -2,6 +2,15 @@
 
 本文件记录 Pupil 的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [1.0.4] - 2026-08-28
+
+### 变更
+- **思考动画 100% 对齐原版**：找到了 grok-icon-study 的 GitHub 源码仓（replica/src/fx.js 的 paintOrbit + extracted/geometry-raw.js 的 Re=114.2705），放弃自创近似——按原版公式逐项移植：轨道半径 52K、小球基准 12K（K=21/Re 等比缩放到我们的球）、纵向压缩 0.42、相位速度 0.0017 rad/ms、深度 dn=0.5+0.5·max(cos,0)、透明度 clamp((cos+0.4)/0.6, .18, 1)、入场 Rc(easeOutCubic)+半径过冲 y1e(easeOutBack)；rAF 逐帧 setAttribute 与原引擎同方式。五球在黑球内部环绕（原版即如此）
+- **状态色上悬浮球**：聚合状态非 idle 时球外圈显示状态色脉冲细环（notifying 风格），取代托盘状态色——托盘图标恢复原始静态（托盘通常隐藏，coloring 无意义），悬停摘要保留
+
+### 修复
+- **悬浮球右键菜单恢复明确的勿扰开/关项**：此前只有时长项没有开关（用户反馈「连开关都没有」）
+
 ## [1.0.3] - 2026-08-28
 
 ### 修复

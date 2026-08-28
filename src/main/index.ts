@@ -141,18 +141,20 @@ function bootstrap(): void {
   })
   ipcMain.on(IPC.ballContext, () => {
     const remaining = core.dndRemainingMs
+    // v1.0.4 恢复明确的勿扰开/关项（此前只有时长项，用户找不到开关）
     const menu = Menu.buildFromTemplate([
       ...(core.isDnd
         ? [
             {
               label:
                 remaining !== null
-                  ? `${t('dnd')} · ${Math.ceil(remaining / 60000)} min`
-                  : t('dnd'),
+                  ? `${t('turnOff')}${t('dnd')}（剩 ${Math.ceil(remaining / 60000)} 分钟）`
+                  : `${t('turnOff')}${t('dnd')}`,
               click: () => core.setDnd(false)
             }
           ]
         : [
+            { label: `${t('turnOn')}${t('dnd')}`, click: () => core.setDnd(true) },
             { label: `${t('dnd')} 30 min`, click: () => core.setDndFor(30 * 60_000) },
             { label: `${t('dnd')} 60 min`, click: () => core.setDndFor(60 * 60_000) },
             {
