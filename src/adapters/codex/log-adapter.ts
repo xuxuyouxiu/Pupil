@@ -107,6 +107,10 @@ export function mapRolloutLine(line: Record<string, unknown>): Omit<AgentEvent, 
     if (et.startsWith('token_count')) {
       events.push({ eventType: 'thinking', sessionId: '', timestamp: ts, payload: { raw: line } })
     }
+    // v0.10.0 审批/输入请求（exec_approval_request 等）→ 等待用户确认
+    if (/approval|input_request|elicitation/i.test(et)) {
+      events.push({ eventType: 'waiting_input', sessionId: '', timestamp: ts, payload: { raw: line } })
+    }
     return events
   }
 

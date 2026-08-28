@@ -26,6 +26,7 @@ function track(overrides: Partial<DshSessionTrack> = {}): DshSessionTrack {
   return {
     running: false,
     blank: false,
+    waiting: false,
     emitted: true,
     title: 't',
     lastUpdatedAt: NOW,
@@ -98,5 +99,43 @@ describe('dsh diffSession', () => {
     const due = diffSession(prev, item({ running: true }), NOW + 31_000)
     expect(types(due.events)).toEqual(['heartbeat'])
     expect(due.next.lastHeartbeatAt).toBe(NOW + 31_000)
+  })
+})
+
+describe('dsh waiting_input 容错映射（v0.10.0）', () => {
+  it('running + wait 类 status -> waiting_input（边沿）', () => {
+    const r = diffSession(
+      track({ running: true }),
+      item({ running: true, status: 'waiting_approval' }),
+      NOW + 1
+    )
+    expect(types(r.events)).toContain('waiting_input')
+    expect(r.next.waiting).toBe(true)
+  })
+
+  it('解除等待但仍在运行 -> 重新 turn_started', () => {
+    const prev = track({ running: true, waiting: true })
+    const r = diffSession(prev, item({ running: true, status: 'generating' }), NOW + 1)
+    expect(types(r.events)).toContain('turn_started')
+    expect(r.next.waiting).toBe(false)
+  })
+
+  it('status 无变化不重复发事件', () => {
+    const prev = track({ running: true, waiting: true, lastHeartbeatAt: NOW })
+    const r = diffSession(prev, item({ running: true, status: 'waiting_approval' }), NOW + 1)
+    expect(r.events).toHaveLength(0)
+  })
+
+  it('permission/confirm/input 关键字同样命中', () => {
+    for (const status of ['needs_input', 'permission_required', 'confirming']) {
+      const r = diffSession(track({ running: true }), item({ running: true, status }), NOW + 1)
+      expect(types(r.events)).toContain('waiting_input')
+    }
+  })
+
+  it('running=false 时 status 不触发等待（等待语义仅在运行中成立）', () => {
+    const r = diffSession(track({ running: false }), item({ running: false, status: 'waiting' }), NOW + 1)
+    expect(types(r.events)).not.toContain('waiting_input')
+    expect(r.next.waiting).toBe(false)
   })
 })

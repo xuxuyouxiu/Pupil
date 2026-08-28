@@ -32,6 +32,8 @@ export interface DshSessionSummary {
   updatedAt?: number
   running?: boolean
   blank?: boolean
+  /** 宿主侧细粒度状态（v0.10.0 容错映射：wait/input/approv/confirm/permission 视为等待输入） */
+  status?: string
   cwd?: string
   origin?: string
   projections?: {
@@ -59,11 +61,19 @@ export interface DshListResponse {
 export interface DshSessionTrack {
   running: boolean
   blank: boolean
+  /** v0.10.0：上一观测是否处于等待输入（边沿触发 waiting_input 事件） */
+  waiting: boolean
   /** 是否已向 Pupil 上报过 session_started */
   emitted: boolean
   title?: string
   lastUpdatedAt: number
   lastHeartbeatAt: number
+}
+
+/** 容错判断宿主状态串是否表示"等用户"（权限确认/输入请求等） */
+export function looksLikeWaiting(status?: string): boolean {
+  if (!status) return false
+  return /wait|input|approv|confirm|permission/i.test(status)
 }
 
 export function apiBaseUrl(): string {
@@ -122,6 +132,7 @@ export function diffSession(
   const events: Omit<AgentEvent, 'source' | 'agentType'>[] = []
   const running = item.running === true
   const blank = item.blank === true
+  const waiting = running && looksLikeWaiting(item.status)
   const title = item.projections?.values?.title ?? undefined
   const cwd = item.cwd
   const updatedAt = item.updatedAt ?? 0
@@ -137,6 +148,7 @@ export function diffSession(
     const next: DshSessionTrack = {
       running,
       blank,
+      waiting,
       emitted: !blank,
       title,
       lastUpdatedAt: updatedAt,
@@ -145,6 +157,7 @@ export function diffSession(
     if (blank) return { events, next }
     events.push({ ...base, eventType: 'session_started' })
     if (running) events.push({ ...base, eventType: 'turn_started' })
+    if (waiting) events.push({ ...base, eventType: 'waiting_input' })
     return { events, next }
   }
 
@@ -152,6 +165,7 @@ export function diffSession(
     ...prev,
     running,
     blank,
+    waiting,
     title: title ?? prev.title,
     lastUpdatedAt: updatedAt
   }
@@ -162,6 +176,7 @@ export function diffSession(
     next.lastHeartbeatAt = running ? now : next.lastHeartbeatAt
     events.push({ ...base, eventType: 'session_started' })
     if (running) events.push({ ...base, eventType: 'turn_started' })
+    if (waiting) events.push({ ...base, eventType: 'waiting_input' })
     return { events, next }
   }
 
@@ -180,6 +195,11 @@ export function diffSession(
     // 轮询源续期：避免长时间 LLM 生成被误判断连
     next.lastHeartbeatAt = now
     events.push({ ...base, eventType: 'heartbeat' })
+  }
+
+  // v0.10.0 等待输入边沿：进入等待 -> waiting_input；解除等待但仍在运行 -> 重新 turn_started
+  if (running && waiting !== prev.waiting) {
+    events.push({ ...base, eventType: waiting ? 'waiting_input' : 'turn_started' })
   }
 
   return { events, next }

@@ -85,6 +85,11 @@ function Exclaim() {
 export function Ball() {
   const sessions = useSessions()
   const display = useMemo(() => aggregateState(sessions), [sessions])
+  /** v0.10.0 活跃会话数：≥2 时球左上角叠数字徽标（勿扰月牙在右上角，避让） */
+  const activeCount = useMemo(
+    () => sessions.filter((s) => toDisplayState(s) !== 'idle').length,
+    [sessions]
+  )
   const [dnd, setDnd] = useState(false)
 
   useEffect(() => {
@@ -315,6 +320,29 @@ export function Ball() {
                 />
               </g>
             </>
+          )}
+          {/* v0.10.0 多会话徽标：左上角数字（活跃会话 ≥2 时显示），颜色随聚合状态 */}
+          {activeCount >= 2 && (
+            <g className="session-badge">
+              <circle
+                cx={9.5}
+                cy={10}
+                r={7}
+                fill={`var(--state-${display})`}
+                stroke="var(--orb-body)"
+                strokeWidth={1.2}
+              />
+              <text
+                x={9.5}
+                y={13}
+                textAnchor="middle"
+                fontSize={8.5}
+                fontWeight={700}
+                fill="#ffffff"
+              >
+                {activeCount > 9 ? '9+' : activeCount}
+              </text>
+            </g>
           )}
           {/* 勿扰指示：右上角月牙角标 */}
           {dnd && (

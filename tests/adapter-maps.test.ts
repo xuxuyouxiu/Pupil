@@ -201,3 +201,29 @@ describe('mapRolloutLine（Codex 经典 CLI rollout jsonl）', () => {
     expect(mapRolloutLine({ type: 'compacted', payload: {} })).toHaveLength(0)
   })
 })
+
+describe('mapRolloutLine 审批请求 → waiting_input（v0.10.0）', () => {
+  it('exec_approval_request -> waiting_input', () => {
+    const events = mapRolloutLine({
+      timestamp: '2026-08-27T10:00:00Z',
+      type: 'event_msg',
+      payload: { type: 'exec_approval_request', command: 'rm -rf /' }
+    })
+    expect(events.map((e) => e.eventType)).toContain('waiting_input')
+  })
+
+  it('input_request / elicitation 同样命中', () => {
+    for (const pt of ['input_request', 'elicitation_request']) {
+      const events = mapRolloutLine({ type: 'event_msg', payload: { type: pt } })
+      expect(events.map((e) => e.eventType)).toContain('waiting_input')
+    }
+  })
+
+  it('普通 agent_message 不触发 waiting_input', () => {
+    const events = mapRolloutLine({
+      type: 'event_msg',
+      payload: { type: 'agent_message', message: 'done' }
+    })
+    expect(events.map((e) => e.eventType)).not.toContain('waiting_input')
+  })
+})

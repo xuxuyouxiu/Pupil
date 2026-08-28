@@ -2,6 +2,18 @@
 
 本文件记录 Pupil 的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.10.0] - 2026-08-27
+
+> 路线图批次二「核心卖点」全部落地（docs/ROADMAP-v1.md）
+
+### 新增
+- **waiting_input 跨源覆盖**：此前只有 Claude Code 能报「等待输入」——
+  - **Codex**：rollout 事件流的审批/输入请求（`exec_approval_request` / `input_request` / `elicitation*`）→ waiting_input，权限确认场景终于可用
+  - **DSH**：宿主侧 `status` 字段容错映射（wait/input/approv/confirm/permission 关键字），边沿触发进等待、解除等待且仍在运行时补发 turn_started 回到运行态
+  - **Hermes / ZCode**：轮次型源「等用户」与「回合完成」语义同义（完成提醒已覆盖），刻意不引入猜测式启发式（决策记录在 ROADMAP 2.1）
+- **球体多会话徽标**：活跃会话 ≥2 时球左上角显示数字徽标（>9 显示 9+），颜色随聚合状态变化；勿扰月牙在右上角互不干扰
+- **托盘状态化**：托盘图标按最高优先级会话状态着色（勿扰时转灰），悬停显示「2 运行 · 1 等待 · 1 完成」摘要；订阅快照自动刷新（签名去重不重绘）
+
 ## [0.9.0] - 2026-08-27
 
 > 路线图批次一「小而关键」全部落地（docs/ROADMAP-v1.md）
