@@ -17,7 +17,7 @@ import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
 import { AgentAdapter, AdapterFactory, AdapterHealth } from '../types'
-import { AgentEvent } from '../../shared/events'
+import { AgentEvent, TokenUsage } from '../../shared/events'
 import { readUtf8Incremental } from '../incremental'
 import { safeJoin } from '../safe-path'
 
@@ -37,36 +37,6 @@ export function deriveSessionId(filePath: string): string {
   return base.replace(/^model-io-sess_/, '').replace(/\.jsonl$/i, '')
 }
 
-/** 判断一条消息是否为"用户提交的 prompt"（排除工具结果伪装成 user 轮次的场景） */
-function isUserPrompt(content: unknown): boolean {
-  if (typeof content === 'string') return content.trim().length > 0
-  if (!Array.isArray(content)) return false
-  let hasText = false
-  for (const block of content) {
-    if (!block || typeof block !== 'object') continue
-    const b = block as Record<string, unknown>
-    const t = typeof b.type === 'string' ? b.type : ''
-    if (t === 'tool_result' || t === 'tool_use_id' || t === 'image') return false
-    if (t === 'text') hasText = true
-  }
-  return hasText
-}
-
-/** 统计快照里累计的 user prompt 数量 */
-function countPrompts(line: Record<string, unknown>): number {
-  const req = line.request as Record<string, unknown> | undefined
-  const msgs = req?.messages
-  if (!Array.isArray(msgs)) return 0
-  let n = 0
-  for (const m of msgs) {
-    if (!m || typeof m !== 'object') continue
-    const msg = m as Record<string, unknown>
-    if (msg.role !== 'user') continue
-    if (isUserPrompt(msg.content)) n++
-  }
-  return n
-}
-
 /** 行时间戳：completedAt 为毫秒 epoch 数字或 ISO 字符串；异常时回退当前时间 */
 function lineTimestamp(completedAt: unknown): number {
   if (typeof completedAt === 'number' && Number.isFinite(completedAt) && completedAt > 0) {
@@ -80,24 +50,35 @@ function lineTimestamp(completedAt: unknown): number {
   return Date.now()
 }
 
+/** 单次请求的响应侧信号（finishReason / usage） */
+export interface ModelIoSignals {
+  events: Omit<AgentEvent, 'source' | 'agentType' | 'sessionId'>[]
+  /** 本行的轮次 id（供 adapter 维护分轮状态） */
+  turnId: string | undefined
+}
+
 /**
- * 单行 model_io -> 归一化事件序列（导出供单元测试）
- * prevUserTurns 为该文件此前累计的 prompt 数；计数增长即视为新一轮任务开始。
+ * v1.0.3 单行 model_io -> 归一化事件序列（真实信号版，导出供单元测试）：
+ * - turnId 变化（含首见） -> turn_started——宿主原生轮次分组，零猜测
+ * - response.finishReason 非 tool-calls（stop/end_turn/length…） -> turn_completed 即刻收敛，
+ *   替代旧的 3 分钟静默启发式（那是「答完一两分钟才停下」的根因）
+ * - response.usage 提取 token 用量（inputTokens 已含缓存读/写，拆回各分量）
+ * - 行带 error -> error 事件
  */
 export function mapModelIoLine(
   line: Record<string, unknown>,
-  prevUserTurns: number
-): Omit<AgentEvent, 'source' | 'agentType' | 'sessionId'>[] {
+  prevTurnId: string | undefined
+): ModelIoSignals {
   const events: Omit<AgentEvent, 'source' | 'agentType' | 'sessionId'>[] = []
   const ts = lineTimestamp(line.completedAt)
+  const turnId = typeof line.turnId === 'string' && line.turnId ? line.turnId : undefined
 
-  // 用户 prompt 计数差值 -> turn_started（严格大于防重放/乱序重复触发）
-  const turns = countPrompts(line)
-  if (turns > prevUserTurns) {
+  // 轮次边界：turnId 首见/变化即新一轮
+  if (turnId && turnId !== prevTurnId) {
     events.push({ eventType: 'turn_started', timestamp: ts })
   }
 
-  // error：attempt 重试 / 请求失败均在此暴露，转成 error 事件（payload 带原始信息）
+  // error：请求失败/重试在此暴露
   if (line.error) {
     const err = line.error
     const message =
@@ -109,18 +90,44 @@ export function mapModelIoLine(
     events.push({ eventType: 'error', timestamp: ts, payload: { errorMessage: message, raw: line } })
   }
 
+  // 完成：finishReason 存在且非工具调用续行 => 本轮真正收敛
+  const resp = (line.response ?? {}) as Record<string, unknown>
+  const finishReason = typeof resp.finishReason === 'string' ? resp.finishReason : ''
+  if (finishReason && !/tool/i.test(finishReason)) {
+    events.push({ eventType: 'turn_completed', timestamp: ts, payload: { raw: line } })
+  }
+
   // 活动脉冲：任何完成的请求都证明会话在动
-  events.push({ eventType: 'thinking', timestamp: ts })
-  return events
+  events.push({ eventType: 'thinking', timestamp: ts, payload: { usage: extractUsage(resp) } })
+
+  return { events, turnId }
+}
+
+/** response.usage 形态：{ inputTokens(含缓存读/写), outputTokens, cacheReadTokens, cacheWriteTokens } */
+function extractUsage(resp: Record<string, unknown>): TokenUsage | undefined {
+  const u = resp.usage as Record<string, unknown> | undefined
+  if (!u || typeof u !== 'object') return undefined
+  const cacheRead = Number(u.cacheReadTokens ?? 0)
+  const cacheWrite = Number(u.cacheWriteTokens ?? 0)
+  const totalInput = Number(u.inputTokens ?? 0)
+  const output = Number(u.outputTokens ?? 0)
+  const realInput = Math.max(0, totalInput - cacheRead - cacheWrite)
+  if (!realInput && !output && !cacheRead && !cacheWrite) return undefined
+  return {
+    inputTokens: realInput,
+    outputTokens: output,
+    cacheReadTokens: cacheRead || undefined,
+    cacheCreationTokens: cacheWrite || undefined
+  }
 }
 
 interface RolloutTailState {
   sessionId: string
   offset: number
   pending: string
-  /** 截至上次解析累计的 user prompt 数（新行计数增长 => turn_started） */
-  userTurns: number
-  /** 本轮已发运行脉冲且未发过静默完成 */
+  /** 最近一次解析到的轮次 id（变化 => turn_started） */
+  lastTurnId: string | undefined
+  /** 本轮已发运行脉冲且未发过静默完成（finishReason 缺失时的兜底） */
   pulsing: boolean
   lastChangedAt: number
 }
@@ -165,13 +172,20 @@ export class ZcodeRolloutAdapter implements AgentAdapter {
       try {
         const stat = fs.statSync(p)
         const text = readWholeFileBaseline(p)
-        // 基线 = 已有内容的最后一个 prompt 计数（粗读：逐行取最后成功行的计数）
-        let baselineTurns = 0
+        // 基线 = 最后一行的 turnId；若其 finishReason 为工具续行（或缺失），视为回合仍开着
+        let lastTurnId: string | undefined
+        let openTurn = false
         for (const raw of text.split('\n')) {
           if (!raw.trim()) continue
           try {
             const line = JSON.parse(raw) as Record<string, unknown>
-            baselineTurns = Math.max(baselineTurns, countPrompts(line))
+            const tid = typeof line.turnId === 'string' ? line.turnId : undefined
+            if (tid) {
+              lastTurnId = tid
+              const resp = (line.response ?? {}) as Record<string, unknown>
+              const fr = typeof resp.finishReason === 'string' ? resp.finishReason : ''
+              openTurn = !fr || /tool/i.test(fr)
+            }
           } catch {
             /* 半行忽略 */
           }
@@ -180,7 +194,7 @@ export class ZcodeRolloutAdapter implements AgentAdapter {
           sessionId: deriveSessionId(p),
           offset: stat.size,
           pending: '',
-          userTurns: baselineTurns,
+          lastTurnId,
           pulsing: false,
           lastChangedAt: Date.now()
         })
@@ -192,6 +206,16 @@ export class ZcodeRolloutAdapter implements AgentAdapter {
           timestamp: Date.now(),
           payload: { raw: { filePath: p } }
         })
+        // 恢复运行中回合：时长从重启时刻起算（好于 --:--）
+        if (openTurn) {
+          this.emit?.({
+            source: ID,
+            agentType: 'zcode',
+            sessionId: deriveSessionId(p),
+            eventType: 'turn_started',
+            timestamp: Date.now()
+          })
+        }
       } catch {
         /* 单文件失败不影响其他 */
       }
@@ -233,7 +257,7 @@ export class ZcodeRolloutAdapter implements AgentAdapter {
             sessionId: deriveSessionId(p),
             offset: size,
             pending: '',
-            userTurns: 0,
+            lastTurnId: undefined,
             pulsing: false,
             lastChangedAt: now
           })
@@ -297,12 +321,13 @@ export class ZcodeRolloutAdapter implements AgentAdapter {
       } catch {
         continue
       }
-      for (const ev of mapModelIoLine(line, state.userTurns)) {
+      const mapped = mapModelIoLine(line, state.lastTurnId)
+      for (const ev of mapped.events) {
         this.emit?.({ ...ev, source: ID, agentType: 'zcode', sessionId: state.sessionId })
       }
-      const turns = countPrompts(line)
-      if (turns > state.userTurns) state.userTurns = turns
-      // 有真实内容到达即算活动（不带事件的行同样续期静默计时）
+      if (mapped.turnId) state.lastTurnId = mapped.turnId
+      // 有真实内容到达即算活动；finishReason 已覆盖正常收敛，
+      // 静默启发式（3 分钟）保留为旧行缺 finishReason 时的兜底
       state.pulsing = true
       state.lastChangedAt = now
     }

@@ -206,6 +206,8 @@ export class CodexLogAdapter implements AgentAdapter {
         // 活动脉冲：updated_at_ms 或 tokens 变化 -> 本轮开始（重置静默计时）
         if (updated !== prev.updated || tokens !== prev.tokens) {
           this.seen.set(r.id, { updated, tokens, pulsing: true, lastChangedAt: now })
+          // v1.0.3 tokens_used 为会话累计，差值作为增量用量上报（计入输入侧，成本按输入价折算）
+          const usageDelta = Math.max(0, tokens - prev.tokens)
           this.emit?.({
             source: ID,
             agentType: 'codex',
@@ -213,7 +215,13 @@ export class CodexLogAdapter implements AgentAdapter {
             cwd: r.cwd,
             eventType: 'turn_started',
             timestamp: now,
-            payload: { title: r.title, raw: { updated, tokens } }
+            payload: {
+              title: r.title,
+              raw: { updated, tokens },
+              ...(usageDelta > 0
+                ? { usage: { inputTokens: usageDelta, outputTokens: 0 } }
+                : {})
+            }
           })
           continue
         }
@@ -432,6 +440,7 @@ export class CodexLogAdapter implements AgentAdapter {
   }
 
   private emitSessionStarted(r: ThreadRow): void {
+    const tokens = Number(r.tokens_used ?? 0)
     this.emit?.({
       source: ID,
       agentType: 'codex',
@@ -439,7 +448,11 @@ export class CodexLogAdapter implements AgentAdapter {
       cwd: r.cwd,
       eventType: 'session_started',
       timestamp: Date.now(),
-      payload: { title: r.title, raw: { title: r.title } }
+      payload: {
+        title: r.title,
+        raw: { title: r.title },
+        ...(tokens > 0 ? { usage: { inputTokens: tokens, outputTokens: 0 } } : {})
+      }
     })
   }
 }

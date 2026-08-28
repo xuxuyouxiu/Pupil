@@ -31,12 +31,13 @@ export interface AgentEventPayload {
   raw?: unknown // 原始行/事件，调试用
 }
 
-/** 单次模型请求的 token 用量 */
+/** 单次/增量模型请求的 token 用量（costUsd = 数据源自带的真实成本增量，如 hermes） */
 export interface TokenUsage {
   inputTokens: number
   outputTokens: number
   cacheReadTokens?: number
   cacheCreationTokens?: number
+  costUsd?: number
 }
 
 /** 单价（美元 / 百万 token） */

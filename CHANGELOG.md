@@ -2,6 +2,18 @@
 
 本文件记录 Pupil 的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [1.0.3] - 2026-08-28
+
+### 修复
+- **答完话球还「思考」一两分钟才停（ZCode 源）**：ZCode 的回合结束此前靠 3 分钟静默启发式；发现 rollout 日志自带权威信号后全面改用——`turnId` 变化 = 新一轮（替代 prompt 计数猜测）、`response.finishReason` 非 tool-calls = 本轮即刻收敛（启发式仅保留为旧行缺字段的兜底）、重启后若回合仍开着自动补发 turn_started（时长不再显示 `--:--`）
+- **ZCode 会话看不到 token 用量**：`response.usage`（inputTokens 含缓存读/写）现按分量拆解入库，面板会话行显示累计 tokens；Claude Code 通道原有
+
+### 新增
+- **全源 token 用量补齐**：
+  - **Hermes**：sessions 表自带完整用量与真实美元成本（input/output/cache_read/cache_write/reasoning_tokens + estimated/actual_cost_usd）——首次发现即整体入库，此后按差值增量上报；**成本走直通模式**（数据源真实值优先于定价折算，混合场景各自独立）
+  - **Codex**：`threads.tokens_used` 累计值差值上报（计入输入侧，成本按输入价保守折算）
+  - DSH：session.list 无用量字段，标记不适用
+
 ## [1.0.2] - 2026-08-27
 
 ### 修复

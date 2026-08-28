@@ -63,6 +63,10 @@ interface SessionRecord {
   turnOut: number
   totalIn: number
   totalOut: number
+  /** v1.0.3 成本：costExact=true 表示数据源自带真实成本（如 hermes），直接累计；否则按定价表折算 */
+  costTurn: number
+  costTotal: number
+  costExact: boolean
 }
 
 /** 由 cwd 推导展示名（目录名），无 cwd 时回退会话 ID 前缀 */
@@ -120,8 +124,10 @@ export class SessionRegistry {
           turnIn: 0,
           turnOut: 0,
           totalIn: 0,
-          totalOut: 0
-        }
+          totalOut: 0,
+          costTurn: 0,
+          costTotal: 0,
+          costExact: false        }
         this.sessions.set(key, rec)
       }
       rec.events.push({
@@ -171,8 +177,10 @@ export class SessionRegistry {
         turnIn: 0,
         turnOut: 0,
         totalIn: 0,
-        totalOut: 0
-      }
+        totalOut: 0,
+        costTurn: 0,
+        costTotal: 0,
+        costExact: false      }
       this.sessions.set(key, rec)
     }
 
@@ -242,10 +250,18 @@ export class SessionRegistry {
     }
     const u: TokenUsage | undefined = event.payload?.usage
     if (u) {
-      rec.turnIn += u.inputTokens + (u.cacheCreationTokens ?? 0)
+      const cacheIn = u.cacheCreationTokens ?? 0
+      const cacheRead = u.cacheReadTokens ?? 0
+      rec.turnIn += u.inputTokens + cacheIn
       rec.turnOut += u.outputTokens
-      rec.totalIn += u.inputTokens + (u.cacheCreationTokens ?? 0) + (u.cacheReadTokens ?? 0)
+      rec.totalIn += u.inputTokens + cacheIn + cacheRead
       rec.totalOut += u.outputTokens
+      // v1.0.3 数据源自带真实成本（如 hermes sessions 表）时直通累计，不走定价折算
+      if (typeof u.costUsd === 'number') {
+        rec.costExact = true
+        rec.costTurn += u.costUsd
+        rec.costTotal += u.costUsd
+      }
     }
 
     // session_ended 后由推断 tick 调用 prune() 延迟清除（见 SESSION_ENDED_RETENTION_MS）
@@ -364,7 +380,7 @@ export class SessionRegistry {
       view.state = 'done'
     }
     // v0.11.0 用量与成本投影（定价未配置的 agent 成本为 0，前端据此隐藏成本）
-    if (rec.totalIn > 0 || rec.totalOut > 0) {
+    if (rec.totalIn > 0 || rec.totalOut > 0 || rec.costTotal > 0) {
       const p = this.pricingFn?.(rec.agentType)
       const cost = (inToks: number, outToks: number): number =>
         p ? (inToks * p.inputPer1M + outToks * p.outputPer1M) / 1_000_000 : 0
@@ -373,8 +389,8 @@ export class SessionRegistry {
         turnOut: rec.turnOut,
         totalIn: rec.totalIn,
         totalOut: rec.totalOut,
-        costTurn: cost(rec.turnIn, rec.turnOut),
-        costTotal: cost(rec.totalIn, rec.totalOut)
+        costTurn: rec.costExact ? rec.costTurn : cost(rec.turnIn, rec.turnOut),
+        costTotal: rec.costExact ? rec.costTotal : cost(rec.totalIn, rec.totalOut)
       }
     }
     return view

@@ -34,6 +34,14 @@ interface SessionRow {
   started_at?: number
   ended_at?: number | null
   last_activity_at?: number
+  /** v1.0.3 用量与真实成本（sessions 表自带） */
+  input_tokens?: number
+  output_tokens?: number
+  cache_read_tokens?: number
+  cache_write_tokens?: number
+  reasoning_tokens?: number
+  estimated_cost_usd?: number
+  actual_cost_usd?: number
 }
 
 interface MessageRow {
@@ -120,6 +128,8 @@ export class HermesSqliteAdapter implements AgentAdapter {
   private activeSessions = new Map<string, boolean>() // id -> 是否已上报 session_started
   /** 会话真实标题（sessions.title），消息差分事件也带上供面板展示/窗口匹配 */
   private titles = new Map<string, string>()
+  /** v1.0.3 已上报的会话累计用量（增量上报用） */
+  private usageSeen = new Map<string, { input: number; output: number; cacheRead: number; cacheWrite: number; cost: number }>()
   private stopped = false
 
   async start(emit: (e: AgentEvent) => void): Promise<void> {
@@ -141,7 +151,7 @@ export class HermesSqliteAdapter implements AgentAdapter {
       // 发现活跃会话 + 恢复状态
       const now = Date.now()
       const sessions = db.query(
-        `SELECT id, cwd, title, started_at, ended_at, last_activity_at FROM sessions
+        `SELECT id, cwd, title, started_at, ended_at, last_activity_at, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, reasoning_tokens, estimated_cost_usd, actual_cost_usd FROM sessions
          WHERE archived=0 AND hidden=0 AND ended_at IS NULL`
       ) as unknown as SessionRow[]
       for (const s of sessions) {
@@ -209,7 +219,7 @@ export class HermesSqliteAdapter implements AgentAdapter {
 
       // 2. 会话发现 / 结束
       const sessions = db.query(
-        `SELECT id, cwd, title, started_at, ended_at, last_activity_at FROM sessions
+        `SELECT id, cwd, title, started_at, ended_at, last_activity_at, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, reasoning_tokens, estimated_cost_usd, actual_cost_usd FROM sessions
          WHERE archived=0 AND hidden=0`
       ) as unknown as SessionRow[]
       const now = Date.now()
@@ -234,6 +244,9 @@ export class HermesSqliteAdapter implements AgentAdapter {
         if (!wasActive && now - lastAct <= ACTIVE_WINDOW_MS) {
           this.activeSessions.set(s.id, true)
           this.emitSession(s, 'session_started', lastAct)
+        }
+        if (this.activeSessions.get(s.id)) {
+          this.emitUsageDelta(s)
         }
       }
     } finally {
@@ -265,7 +278,52 @@ export class HermesSqliteAdapter implements AgentAdapter {
       cwd: s.cwd,
       eventType,
       timestamp: ts || Date.now(),
-      payload: { title: s.title, raw: { title: s.title } }
+      payload: { title: s.title, raw: { title: s.title }, usage: this.takeUsageSnapshot(s) }
+    })
+  }
+
+  /**
+   * v1.0.3 会话累计用量快照：首次把 sessions 表既有累计整体入库，
+   * 之后按差值增量上报（heartbeat 携带）。seen 随快照更新。
+   */
+  private takeUsageSnapshot(s: SessionRow): { inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheCreationTokens: number; costUsd: number } | undefined {
+    const input = Number(s.input_tokens ?? 0)
+    const output = Number(s.output_tokens ?? 0) + Number(s.reasoning_tokens ?? 0)
+    const cacheRead = Number(s.cache_read_tokens ?? 0)
+    const cacheWrite = Number(s.cache_write_tokens ?? 0)
+    const cost = Number(s.actual_cost_usd ?? s.estimated_cost_usd ?? 0)
+    const prev = this.usageSeen.get(s.id)
+    const d = {
+      input: Math.max(0, input - (prev?.input ?? 0)),
+      output: Math.max(0, output - (prev?.output ?? 0)),
+      cacheRead: Math.max(0, cacheRead - (prev?.cacheRead ?? 0)),
+      cacheWrite: Math.max(0, cacheWrite - (prev?.cacheWrite ?? 0)),
+      cost: Math.max(0, cost - (prev?.cost ?? 0))
+    }
+    this.usageSeen.set(s.id, { input, output, cacheRead, cacheWrite, cost })
+    if (!d.input && !d.output && !d.cacheRead && !d.cacheWrite && !d.cost) return undefined
+    return {
+      inputTokens: d.input,
+      outputTokens: d.output,
+      cacheReadTokens: d.cacheRead,
+      cacheCreationTokens: d.cacheWrite,
+      costUsd: d.cost
+    }
+  }
+
+  /** v1.0.3 活跃会话用量差值上报（无变化不发声） */
+  private emitUsageDelta(s: SessionRow): void {
+    if (!this.emit) return
+    const usage = this.takeUsageSnapshot(s)
+    if (!usage) return
+    this.emit?.({
+      source: ID,
+      agentType: 'hermes',
+      sessionId: s.id,
+      cwd: s.cwd,
+      eventType: 'heartbeat',
+      timestamp: Date.now(),
+      payload: { title: s.title, usage }
     })
   }
 }
