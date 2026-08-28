@@ -203,48 +203,38 @@ body {
   transform: scale(0);
 }
 
-/* v1.0.1 思考动画：三轴环绕轨道环（参考 grok-icon-study 的 gizmo-orbit——
-   细描边 2px、前后层透明度差、各自异速进动）。
-   三环半径 26（球 r21 外圈），绕屏幕 Z 轴缓慢旋转形成"环绕"感；
-   x 环 rotateX 压扁为主视环，y 环 rotateY 立向，z 环平铺最弱。
-   黑球留原地当底板（v0.4.5），白环任何壁纸都有对比度 */
-.think-orbits .orb {
+/* v1.0.2 思考动画：中心球 + 五球环绕（grok-icon-study orbit 状态，周期 3.2s）。
+   五臂均布 72° 公转；小球按公转相位做远近脉动（近侧放大提亮、远侧缩小减淡），
+   动画延迟 -i*0.64s 让每球的"最近点"精确错开 1/5 周期。黑球留原地当底板 */
+.think-orbit .orb-arm {
   transform-origin: 28px 28px;
   transform-box: view-box;
+  animation: orb-arm-spin 3.2s linear infinite;
 }
-.o-z {
-  animation: orb-spin 6.5s linear infinite;
-}
-.o-x {
-  animation: orb-spin 4.6s linear infinite reverse;
-}
-.o-y {
-  animation: orb-spin 5.6s linear infinite;
-}
-@keyframes orb-spin {
+@keyframes orb-arm-spin {
+  from {
+    transform: rotate(var(--base));
+  }
   to {
-    transform: rotate(360deg);
+    transform: rotate(calc(var(--base) + 360deg));
   }
 }
-.orb-ring {
-  fill: none;
-  stroke: var(--eye-white);
-  stroke-width: 2;
-}
-.o-z .orb-ring {
-  opacity: 0.28;
-}
-.o-x .orb-ring {
-  opacity: 0.95;
-  transform: rotateX(66deg);
+.orb-ball {
+  fill: var(--eye-white);
   transform-box: fill-box;
   transform-origin: center;
+  animation: orb-ball-pulse 3.2s linear infinite;
 }
-.o-y .orb-ring {
-  opacity: 0.6;
-  transform: rotateY(66deg);
-  transform-box: fill-box;
-  transform-origin: center;
+@keyframes orb-ball-pulse {
+  0%,
+  100% {
+    transform: scale(0.5);
+    opacity: 0.3;
+  }
+  50% {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 
 /* 感叹号滑入：-1.8px → +15.4px（原版 -0.087→+0.732 球半径）1.5s ease-in-out，

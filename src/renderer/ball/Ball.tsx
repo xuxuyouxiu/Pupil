@@ -38,22 +38,30 @@ function aggregateState(views: SessionView[]): DisplayState {
 }
 
 /**
- * v1.0.1 思考动画：三轴环绕轨道环（参考 grok-icon-study 的 gizmo-orbit）。
- * 细描边环（r=26，球 r21 外圈）绕 Z 轴异速进动；x 环 rotateX 压扁为主视环，
- * y 环 rotateY 立向，z 环平铺最弱——前后层透明度差复刻原版的纵深感。
+ * v1.0.2 思考动画：中心球 + 五颗小球环绕（参考 grok-icon-study 的 orbit 状态，
+ * 周期 3.2s 与原版一致）。五球均布 72°，随公转位置做远近脉动——
+ * 转到近侧（下方）放大提亮、远侧缩小减淡，复刻 3D 环绕的纵深错觉。
  */
 function ThinkingOrbit() {
+  const R = 24
+  const PERIOD = 3.2
   return (
-    <g className="think-orbits" aria-hidden>
-      <g className="orb o-z">
-        <circle cx={28} cy={28} r={26} className="orb-ring" />
-      </g>
-      <g className="orb o-y">
-        <circle cx={28} cy={28} r={26} className="orb-ring" />
-      </g>
-      <g className="orb o-x">
-        <circle cx={28} cy={28} r={26} className="orb-ring" />
-      </g>
+    <g className="think-orbit" aria-hidden>
+      {[0, 1, 2, 3, 4].map((i) => (
+        <g
+          key={i}
+          className="orb-arm"
+          style={{ '--base': `${i * 72}deg`, animationDelay: '0s' } as React.CSSProperties}
+        >
+          <circle
+            className="orb-ball"
+            cx={28}
+            cy={28 - R}
+            r={3.2}
+            style={{ animationDelay: `${(-i * 0.2 * PERIOD).toFixed(2)}s` }}
+          />
+        </g>
+      ))}
     </g>
   )
 }
