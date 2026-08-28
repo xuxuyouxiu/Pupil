@@ -1,64 +1,43 @@
 /**
- * Updater —— GitHub Releases 更新检查/下载（无 electron-updater 依赖）
+ * Updater —— v1.0.0：electron-updater 差量更新 + 双 provider 回退 + 全套韧性设施
  *
- * 检查：GET github.com/<owner>/<repo>/releases/latest（公开仓库无需认证）
- * 下载：v0.6.2 起 —— 实测带宽选源 + 多线程分块并行 + 低速看门狗：
- *   1. 对每个候选源（直连 + 镜像）发一个 512KB 的 Range 探测请求，量出真实吞吐
- *      （此前按 HEAD 延迟选源，延迟低 ≠ 速度快），同时探测出该源是否支持 Range；
- *   2. 最快且支持 Range 的源用 6 个连接并行下载不同字节区间，直写文件对应偏移；
- *   3. 不支持 Range 的源回退单流下载；单流带看门狗——平均速度低于阈值即换源，
- *      替代旧的"60 秒硬超时整段重来"（白白丢掉已下的进度）。
- * 安装：sha256 与 GitHub release digest 比对通过后标记退出静默安装（NSIS /S）。
- * 说明：NSIS 安装版优先，portable 兜底；开发模式（非打包）不做网络检查。
- *
- * v0.7.1 网络栈更换：全部请求改走 Electron net.fetch（Chromium 网络栈）——
- * Node 全局 fetch 不认系统代理/PAC（用户挂 Clash 等代理时更新必失败，直连 GitHub 不通），
- * net.fetch 与系统代理行为一致，代理开启即自动生效；app 未就绪时兜底回退 Node fetch。
+ * 结构（继承自 0.6.x~0.8.x 的全部教训）：
+ * - 检查/下载改用 electron-updater：利用 blockmap 差量（88MB 新版只下变化块，通常几 MB）
+ * - 双 provider：阿里云 CDN 固定目录（dl.xuxuya66.top/download/pupil，国内全速）
+ *   优先，失败切 GitHub provider 兜底；两轮之外再叠「系统代理 → 直连」模式重试
+ * - 代理预检快速失败（v0.8.4）；update-check.log 全程取证（v0.8.3）
+ * - 安装走自研批处理（等 1s → taskkill 残留 → /S 静默 → 显式自启，v0.9.0），
+ *   关闭 autoInstallOnAppQuit 避免双安装
+ * - 完整性由 electron-updater 内建 sha512 校验（latest.yml），通道切换不降级
  */
-import { app, Notification, net, shell } from 'electron'
-import { createReadStream, promises as fsp, writeFileSync, readFileSync, statSync } from 'node:fs'
+import { app, Notification, shell } from 'electron'
+import { writeFileSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
-import { createHash } from 'node:crypto'
 import { spawn } from 'node:child_process'
 import * as nodeNet from 'node:net'
+import { autoUpdater, UpdateCheckResult as EuCheckResult } from 'electron-updater'
 import { UpdateCheckResult } from '../shared/ipc-channels'
 import { dataDir } from '../adapters/http-ingest/auth'
-import {
-  cdnAssetUrl,
-  downloadMirrors,
-  GitHubRelease,
-  isNewerVersion,
-  OSS_CDN_BASE,
-  parseGitHubRelease,
-  parseLatestYml,
-  splitRanges
-} from './update-core'
 
-/** 统一网络入口：走 Chromium 栈（系统代理/PAC 生效）；app 未 ready 时回退 Node fetch */
-function httpFetch(url: string, init?: RequestInit): Promise<Response> {
-  if (app.isReady()) return net.fetch(url, init)
-  return fetch(url, init)
-}
+const OWNER = 'xuxuyouxiu'
+const REPO = 'Pupil'
+const CHECK_TIMEOUT_MS = 10_000
+/** CDN 固定目录：sync-release-oss.py 每次发版把 latest.yml/exe/blockmap 同步到这里 */
+const CDN_FEED_URL = 'https://dl.xuxuya66.top/download/pupil'
 
-/**
- * v0.8.3 直连兜底：Clash 退出但"系统代理"开关还开着（指向已死端口）时，
- * Chromium 所有请求全挂——连国内 CDN 都救不回来（用户实测复现的顽固"检查失败"）。
- * 对策：常规（跟随系统代理）两条通道全失败后，把默认会话切到 direct 模式重试一遍；
- * 成功则本会话内记住直连模式（下载阶段沿用），下次检查仍先试系统代理。
- */
+/** 统一网络模式切换（跟随系统代理 / 强制直连） */
 async function setNetworkMode(mode: 'system' | 'direct'): Promise<void> {
   try {
     const { session } = await import('electron')
     await session.defaultSession.setProxy(mode === 'direct' ? { mode: 'direct' } : { mode: 'system' })
   } catch {
-    /* setProxy 失败不阻断：维持现状继续尝试 */
+    /* setProxy 失败不阻断 */
   }
 }
 
 /**
- * v0.8.4 代理预检：问 Chromium「这次请求会走哪个代理」，再对代理端口做一次真实 TCP 连接测试。
- * 代理软件退出/重启中而系统开关残留的场景下，直接跳过注定失败的轮次改用直连——
- * 省掉两轮各 10 秒的无效等待，并把「代理端口不通」这一结论写进日志与错误提示。
+ * 代理预检：问 Chromium「本次会走哪个系统代理」，对端口做真实 TCP 连接测试。
+ * 代理软件退出/重启中而系统开关残留时，直接切直连，省掉注定失败的轮次。
  */
 async function proxyPreflight(log: string[]): Promise<'system' | 'direct'> {
   try {
@@ -68,7 +47,7 @@ async function proxyPreflight(log: string[]): Promise<'system' | 'direct'> {
       new Promise<string>((_, rej) => setTimeout(() => rej(new Error('resolveProxy timeout')), 2000))
     ])
     const m = info.match(/(?:PROXY|HTTPS|SOCKS5?)\s+([^;\s]+)/i)
-    if (!m) return 'system' // DIRECT：无需预检
+    if (!m) return 'system'
     const hostPort = m[1]
     const idx = hostPort.lastIndexOf(':')
     if (idx <= 0) return 'system'
@@ -100,236 +79,20 @@ async function proxyPreflight(log: string[]): Promise<'system' | 'direct'> {
   }
 }
 
-const OWNER = 'xuxuyouxiu'
-const REPO = 'Pupil'
-const RELEASE_API = `https://api.github.com/repos/${OWNER}/${REPO}/releases/latest`
-const CHECK_TIMEOUT_MS = 10_000
-/** 单个下载源（直连/镜像）的尝试超时上限；远端完全无响应的兜底 */
-const DOWNLOAD_ATTEMPT_TIMEOUT_MS = 120_000
-/** 并行探测下载源是否可达的时间窗口 */
-const PROBE_TIMEOUT_MS = 6_000
-/** 实测带宽探测的字节数 */
-const RANGE_PROBE_BYTES = 512 * 1024
-/** 并行下载连接数 */
-const PARALLEL_CHUNKS = 6
-/** 每个分块连接的绝对超时兜底 */
-const PER_CHUNK_TIMEOUT_MS = 180_000
-/** 看门狗：单流模式平均速度低于该值视为该源太慢，换下一个源 */
-const MIN_AVG_SPEED_BPS = 48 * 1024
-/** 看门狗生效前给 TCP 慢启动的宽限时间 */
-const SPEED_WATCHDOG_GRACE_MS = 15_000
-
-/** 探测单个源：Range 小段真实下载测吞吐；失败返回 null */
-async function scoreSource(url: string): Promise<{ url: string; bps: number; supportsRange: boolean } | null> {
-  const started = Date.now()
-  try {
-    const res = await httpFetch(url, {
-      method: 'GET',
-      headers: { Range: `bytes=0-${RANGE_PROBE_BYTES - 1}` },
-      redirect: 'follow',
-      signal: AbortSignal.timeout(PROBE_TIMEOUT_MS)
-    })
-    if (!res.ok || !res.body) return null
-    const supportsRange = res.status === 206
-    const reader = res.body.getReader()
-    let bytes = 0
-    while (bytes < RANGE_PROBE_BYTES) {
-      const { done, value } = await reader.read()
-      if (done) break
-      bytes += value.length
-    }
-    // 已达探测字节数就掐断流：源可能忽略 Range 返回整包
-    void reader.cancel().catch(() => undefined)
-    const ms = Date.now() - started
-    if (bytes === 0) return null
-    return { url, bps: (bytes / Math.max(1, ms)) * 1000, supportsRange }
-  } catch {
-    return null
-  }
-}
-
-/** HEAD 取安装包总大小；拿不到返回 0 */
-async function headContentLength(url: string): Promise<number> {
-  try {
-    const res = await httpFetch(url, {
-      method: 'HEAD',
-      redirect: 'follow',
-      signal: AbortSignal.timeout(PROBE_TIMEOUT_MS)
-    })
-    return Number(res.headers.get('content-length')) || 0
-  } catch {
-    return 0
-  }
-}
-
-/**
- * 把 [start,end] 区间的响应体写到文件句柄指定偏移。
- * end=-1 表示不分块的完整流（不带 Range 头）；块模式下写完必须精确到位否则抛错。
- * v0.8.1 防挂死双保险：不依赖 net.fetch 对 AbortSignal 的支持程度——
- *   1) 整体硬超时 race（fetch 挂死也能跳到下一个源）；
- *   2) 读循环内 30s 无新数据判定卡死，主动 abort 并抛错换源。
- */
-const STALL_TIMEOUT_MS = 30_000
-
-function withHardTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`${what} timed out after ${ms}ms`)), ms)
-    p.then(
-      (v) => {
-        clearTimeout(timer)
-        resolve(v)
-      },
-      (e) => {
-        clearTimeout(timer)
-        reject(e instanceof Error ? e : new Error(String(e)))
-      }
-    )
-  })
-}
-
-async function streamRangeIntoFile(
-  url: string,
-  fh: fsp.FileHandle,
-  start: number,
-  end: number,
-  timeoutMs: number,
-  onBytes: (n: number) => void
-): Promise<void> {
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), timeoutMs)
-  let stallTimer: NodeJS.Timeout | undefined
-  try {
-    const headers: Record<string, string> = {}
-    if (end >= 0) headers.Range = `bytes=${start}-${end}`
-    const res = await withHardTimeout(
-      httpFetch(url, { headers, redirect: 'follow', signal: controller.signal }),
-      timeoutMs,
-      'request'
-    )
-    if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`)
-    let pos = start
-    const reader = res.body.getReader()
-    while (true) {
-      // 单次 read 超过 STALL_TIMEOUT_MS 无返回 => 判定卡死，掐断换源
-      const { done, value } = await Promise.race([
-        reader.read(),
-        new Promise<never>((_, rej) => {
-          stallTimer = setTimeout(
-            () => rej(new Error(`stalled: no data for ${STALL_TIMEOUT_MS / 1000}s`)),
-            STALL_TIMEOUT_MS
-          )
-        })
-      ]).finally(() => clearTimeout(stallTimer))
-      if (done) break
-      await fh.write(Buffer.from(value), 0, value.length, pos)
-      pos += value.length
-      onBytes(value.length)
-    }
-    if (end >= 0 && pos !== end + 1) {
-      throw new Error(`chunk incomplete: wrote up to ${pos}, expected ${end + 1}`)
-    }
-  } finally {
-    clearTimeout(timer)
-    controller.abort() // 正常结束时为无害 no-op；挂死时确保底层连接被掐断
-  }
-}
-
-/**
- * 单流 + 看门狗：平均速度低于阈值时抛错换源（宽限期后开始计时），
- * 比旧版"60 秒硬超时从零重下"更聪明——慢源不再浪费已下载的部分判断权。
- */
-async function streamSingleWithWatchdog(
-  url: string,
-  fh: fsp.FileHandle,
-  timeoutMs: number,
-  onBytes: (n: number) => void
-): Promise<void> {
-  const started = Date.now()
-  let received = 0
-  const wrappedTick = (n: number): void => {
-    received += n
-    const elapsed = Date.now() - started
-    if (
-      elapsed > SPEED_WATCHDOG_GRACE_MS &&
-      elapsed < timeoutMs &&
-      received / elapsed < MIN_AVG_SPEED_BPS
-    ) {
-      throw new Error(`source too slow (${Math.round(received / elapsed / 1024)} KB/s avg)`)
-    }
-    onBytes(n)
-  }
-  await streamRangeIntoFile(url, fh, 0, -1, timeoutMs, wrappedTick)
-}
-
-/** 流式读取已落盘文件的哈希：sha256(hex) 对 GitHub digest；sha512(base64) 对 latest.yml */
-function hashFile(path: string): Promise<{ sha256Hex: string; sha512B64: string }> {
-  return new Promise((resolve, reject) => {
-    const h256 = createHash('sha256')
-    const h512 = createHash('sha512')
-    const rs = createReadStream(path)
-    rs.on('data', (c) => {
-      h256.update(c)
-      h512.update(c)
-    })
-    rs.on('error', reject)
-    rs.on('end', () =>
-      resolve({ sha256Hex: h256.digest('hex'), sha512B64: h512.digest('base64') })
-    )
-  })
-}
-
-/**
- * 分块并行下载到临时文件并返回 sha256（hex）：
- * 支持 Range 的源开 PARALLEL_CHUNKS 个连接各取一段、直写偏移；
- * 不支持或 HEAD 拿不到总大小时退回单流看门狗。任一块失败即整体失败换源。
- * 只写 tmpPath 不做落位——原子改名由调用方完成。
- */
-async function downloadTo(
-  url: string,
-  tmpPath: string,
-  opts: { supportsRange: boolean; total: number },
-  onProgress: (received: number, elapsedMs: number) => void
-): Promise<{ sha256Hex: string; sha512B64: string }> {
-  const fh = await fsp.open(tmpPath, 'w')
-  try {
-    let received = 0
-    const started = Date.now()
-    const tick = (n: number): void => {
-      received += n
-      onProgress(received, Date.now() - started)
-    }
-
-    if (opts.supportsRange && opts.total > 0) {
-      const ranges = splitRanges(opts.total, PARALLEL_CHUNKS)
-      await Promise.all(
-        ranges.map(([start, end]) =>
-          streamRangeIntoFile(url, fh, start, end, PER_CHUNK_TIMEOUT_MS, tick)
-        )
-      )
-    } else {
-      await streamSingleWithWatchdog(url, fh, DOWNLOAD_ATTEMPT_TIMEOUT_MS, tick)
-    }
-  } finally {
-    await fh.close().catch(() => undefined)
-  }
-
-  return hashFile(tmpPath)
-}
-
 export class Updater {
   private result: UpdateCheckResult
   private checking = false
   private downloading = false
-  /** check() 时记录的官方 sha256（"sha256:<hex>"），安装前校验用 */
-  private assetDigest: string | undefined
-  /** CDN 通道的完整性校验依据：latest.yml 内的 sha512（base64），与 GitHub digest 二选一 */
-  private assetSha512: string | undefined
-  /**
-   * 待静默安装的安装包路径：下载校验完成后置位，由主进程 will-quit 拉起
-   * NSIS /S 静默安装（electron-builder assisted 安装器支持，runAfterFinish 默认装完自启）。
-   * 先退出再安装的原因：旧进程存活时静默安装会命中"关闭程序"确认，/S 下无法点击导致失败。
-   */
+  /** 待静默安装的安装包路径（will-quit 批处理拉起，见 consumePendingInstaller） */
   private pendingInstaller: string | null = null
+  /** check 阶段记录的完整性基准（latest.yml sha512，下载失败时辅助取证） */
+  private assetSha512: string | undefined
+  private lastGhError = ''
+  private lastCdnError = ''
+  /** 已监听进度/下载事件（electron-updater 的 listener 只挂一次） */
+  private wired = false
+  /** downloadUpdate() 的 Promise（doDownloadAndOpen 等它拿安装包路径） */
+  private downloadPromise: Promise<string[]> | null = null
 
   constructor() {
     this.result = { status: 'disabled', currentVersion: app.getVersion() }
@@ -339,10 +102,51 @@ export class Updater {
     return this.result
   }
 
-  /** 检查更新。manual=true 是用户手动点击（不弹系统通知）。
-   *  v0.8.3 两轮模式：先跟随系统代理跑两条通道（GitHub API → CDN latest.yml），
-   *  全部失败自动切 direct 直连重试一轮（治「Clash 退出但系统代理开关还开着」的
-   *  全挂场景）；每轮结果追加写入 update-check.log，复现性问题可事后取证。 */
+  /** electron-updater 全局设置 + 事件接线（只做一次） */
+  private wire(): void {
+    if (this.wired) return
+    this.wired = true
+    autoUpdater.autoDownload = false // 下载由用户点击触发
+    autoUpdater.autoInstallOnAppQuit = false // 安装由自研批处理接管（强杀+自启）
+    autoUpdater.allowPrerelease = false
+    autoUpdater.logger = null
+    autoUpdater.on('download-progress', (p) => {
+      if (!this.downloading) return
+      this.result = {
+        ...this.result,
+        status: 'downloading',
+        progress: Math.min(99, Math.round(p.percent)),
+        speedBps: p.bytesPerSecond > 0 ? p.bytesPerSecond : undefined
+      }
+    })
+    autoUpdater.on('error', (e) => {
+      console.warn('[updater] error event:', e?.message)
+    })
+  }
+
+  /** 配置 provider 并检查；返回 electron-updater 的 UpdateInfo 结果或抛错 */
+  private async checkWithProvider(
+    provider: 'cdn' | 'github'
+  ): Promise<{ version: string; sha512?: string; assetName?: string }> {
+    if (provider === 'cdn') {
+      autoUpdater.setFeedURL({ provider: 'generic', url: CDN_FEED_URL })
+    } else {
+      autoUpdater.setFeedURL({ provider: 'github', owner: OWNER, repo: REPO })
+    }
+    const r = (await withTimeout(
+      autoUpdater.checkForUpdates(),
+      CHECK_TIMEOUT_MS,
+      `${provider} check`
+    )) as EuCheckResult | null
+    const info = r?.updateInfo
+    if (!info?.version) throw new Error('empty update info')
+    const files = (info.files ?? []) as Array<{ url?: string }>
+    const assetName = files.find((f) => f.url?.endsWith('.exe'))?.url
+    return { version: info.version, sha512: (info as { sha512?: string }).sha512, assetName }
+  }
+
+  /** 检查更新。两轮模式：跟随系统代理（CDN→GitHub）全失败后切直连再来一轮；
+   *  全过程写入 update-check.log 取证。 */
   async check(manual = false): Promise<UpdateCheckResult> {
     if (!app.isPackaged) {
       this.result = { status: 'dev', currentVersion: app.getVersion() }
@@ -350,12 +154,13 @@ export class Updater {
     }
     if (this.checking) return this.result
     this.checking = true
+    this.wire()
     const current = app.getVersion()
     const log: string[] = [`check v${current} manual=${manual}`]
     try {
       this.result = { status: 'checking', currentVersion: current }
 
-      // ---- v0.8.4 代理预检：系统代理端口死了就直接走直连，不浪费两轮等待 ----
+      // ---- 代理预检：系统代理端口死了就直接走直连，不浪费轮次 ----
       const route = await proxyPreflight(log)
       let attempt = await this.runCheckChannels(current, manual, log)
       if (attempt) {
@@ -376,7 +181,6 @@ export class Updater {
         }
       }
 
-      // 两轮全灭：按预检结论给出人话建议
       const reason = this.lastChannelErrors()
       this.result = {
         status: 'error',
@@ -403,91 +207,67 @@ export class Updater {
     }
   }
 
-  /** 跑两条检查通道（GitHub API → CDN latest.yml）。成功返回结果；双双失败返回 null 并把原因记入 lastErrors */
+  /** 两条 provider 通道（CDN → GitHub）。双双失败返回 null 并记录原因 */
   private async runCheckChannels(
     current: string,
     manual: boolean,
     log: string[]
   ): Promise<UpdateCheckResult | null> {
-    let ghError = ''
+    let cdnError = ''
     try {
-      const res = await httpFetch(RELEASE_API, {
-        headers: {
-          'user-agent': 'pupil-updater',
-          accept: 'application/vnd.github+json'
-        },
-        signal: AbortSignal.timeout(CHECK_TIMEOUT_MS)
-      })
-      if (!res.ok) throw new Error(`GitHub API HTTP ${res.status}`)
-      const release = (await res.json()) as GitHubRelease
-      const parsed = parseGitHubRelease(release)
-      if (!parsed.latestVersion || !isNewerVersion(parsed.latestVersion, current)) {
-        return {
-          status: 'not-available',
-          currentVersion: current,
-          latestVersion: parsed.latestVersion || undefined,
-          releaseUrl: parsed.htmlUrl
-        }
-      }
-      this.result = {
-        status: 'available',
-        currentVersion: current,
-        latestVersion: parsed.latestVersion,
-        message: parsed.message,
-        releaseUrl: parsed.htmlUrl,
-        assetUrl: parsed.asset?.browser_download_url,
-        assetName: parsed.asset?.name
-      }
-      this.assetDigest = parsed.asset?.digest
-      this.assetSha512 = undefined
-      if (!manual) this.notifyAvailable()
-      return this.result
-    } catch (e) {
-      ghError = e instanceof Error ? e.message : String(e)
-      log.push(`gh-error=${ghError.slice(0, 200)}`)
-      console.warn('[updater] GitHub API check failed:', ghError)
-    }
-
-    try {
-      const res = await httpFetch(`${OSS_CDN_BASE}/pupil/latest.yml`, {
-        headers: { 'user-agent': 'pupil-updater' },
-        signal: AbortSignal.timeout(CHECK_TIMEOUT_MS)
-      })
-      if (!res.ok) throw new Error(`CDN HTTP ${res.status}`)
-      const info = parseLatestYml(await res.text())
-      if (!info.version || !isNewerVersion(info.version, current)) {
-        // CDN 可达且无新版本：信任该结果（GitHub 挂但没新版是最常见组合）
+      const info = await this.checkWithProvider('cdn')
+      log.push(`cdn-version=${info.version}`)
+      if (!isNewer(info.version, current)) {
         return { status: 'not-available', currentVersion: current, latestVersion: info.version }
       }
-      const assetName = `Pupil-${info.version}-x64.exe`
+      const assetName = info.assetName ?? `Pupil-${info.version}-x64.exe`
       this.result = {
         status: 'available',
         currentVersion: current,
         latestVersion: info.version,
-        message: 'CDN 镜像通道（GitHub API 暂不可达）',
+        message: 'CDN 镜像通道',
         releaseUrl: `https://github.com/${OWNER}/${REPO}/releases/tag/v${info.version}`,
-        // 保留 GitHub 直链用于镜像链构建；实测排序会优先命中同目录的 CDN 版本
-        assetUrl: `https://github.com/${OWNER}/${REPO}/releases/download/v${info.version}/${assetName}`,
+        assetUrl: `${CDN_FEED_URL}/${assetName}`,
         assetName
       }
-      this.assetDigest = undefined
       this.assetSha512 = info.sha512
       if (!manual) this.notifyAvailable()
       return this.result
     } catch (e) {
-      const cdnError = e instanceof Error ? e.message : String(e)
+      cdnError = e instanceof Error ? e.message : String(e)
       log.push(`cdn-error=${cdnError.slice(0, 200)}`)
+      console.warn('[updater] CDN channel failed:', cdnError)
+    }
+
+    try {
+      const info = await this.checkWithProvider('github')
+      log.push(`gh-version=${info.version}`)
+      if (!isNewer(info.version, current)) {
+        return { status: 'not-available', currentVersion: current, latestVersion: info.version }
+      }
+      const assetName = info.assetName ?? `Pupil-${info.version}-x64.exe`
+      this.result = {
+        status: 'available',
+        currentVersion: current,
+        latestVersion: info.version,
+        releaseUrl: `https://github.com/${OWNER}/${REPO}/releases/tag/v${info.version}`,
+        assetUrl: `https://github.com/${OWNER}/${REPO}/releases/download/v${info.version}/${assetName}`,
+        assetName
+      }
+      this.assetSha512 = info.sha512
+      if (!manual) this.notifyAvailable()
+      return this.result
+    } catch (e) {
+      const ghError = e instanceof Error ? e.message : String(e)
+      log.push(`gh-error=${ghError.slice(0, 200)}`)
       this.lastCdnError = cdnError
       this.lastGhError = ghError
       return null
     }
   }
 
-  private lastGhError = ''
-  private lastCdnError = ''
-
   private lastChannelErrors(): string {
-    return `GitHub: ${this.lastGhError || '未知'}; CDN: ${this.lastCdnError || '未知'}`
+    return `CDN: ${this.lastCdnError || '未知'}; GitHub: ${this.lastGhError || '未知'}`
   }
 
   /** 追加一行检查日志到 %APPDATA%/pupil/update-check.log（超 128KB 直接重开），失败静默 */
@@ -516,13 +296,7 @@ export class Updater {
     if (this.result.releaseUrl) void shell.openExternal(this.result.releaseUrl)
   }
 
-  /**
-   * 用户点击「下载更新」：立即返回当前快照并后台开跑。
-   * 此前 IPC 直接 await 整个下载流程（数分钟），渲染端拿到的 status 始终停留在
-   * available，500ms 轮询永不启动——进度条自 v0.5.5 起从未真正显示过。
-   * 现改为调用即返回 downloading 快照，渲染端靠既有轮询循环持续取进度；
-   * 同步段（守卫 + setResult(downloading)）在返回前已执行完，无竞态。
-   */
+  /** 用户点击「下载更新」：立即返回当前快照并后台开跑（渲染端轮询拿进度） */
   startDownload(): UpdateCheckResult {
     if (this.downloading) return this.result
     if (this.result.status !== 'available' || !this.result.assetUrl) return this.result
@@ -530,115 +304,49 @@ export class Updater {
     return this.result
   }
 
-  /** 后台执行完整下载；用户手动触发 */
+  /** 后台执行完整下载；electron-updater 内建 sha512 + blockmap 差量 */
   async downloadAndOpen(): Promise<UpdateCheckResult> {
-    if (this.downloading) return this.result // 防连点重入：两条流写同一临时文件会互相覆盖
+    if (this.downloading) return this.result
     if (this.result.status !== 'available' || !this.result.assetUrl) return this.result
     this.downloading = true
     try {
-      return await this.doDownloadAndOpen()
+      this.setResult({ ...this.result, status: 'downloading', progress: 0 })
+      this.downloadPromise = autoUpdater.downloadUpdate()
+      const paths = await this.downloadPromise
+      const installerPath = paths?.[0]
+      if (!installerPath) throw new Error('installer path missing after download')
+      this.setResult({ ...this.result, status: 'downloaded', progress: 100, assetUrl: undefined })
+      // 自研批处理安装（强杀残留 + 静默 + 显式自启）
+      this.pendingInstaller = installerPath
+      try {
+        new Notification({
+          title: 'Pupil 更新',
+          body: `v${this.result.latestVersion} 校验通过，正在退出并自动安装，稍候自动重启…`
+        }).show()
+      } catch {
+        /* 通知失败不阻断 */
+      }
+      setTimeout(() => app.quit(), 1200)
+      return this.result
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error)
+      console.warn('[updater] download failed:', msg)
+      this.setResult({
+        ...this.result,
+        status: 'error',
+        progress: undefined,
+        error: `下载失败（${msg}）。完整性基准 ${this.assetSha512 ? 'sha512@latest.yml' : 'provider 内建'}。更新器已跟随系统代理；也可点下方按钮手动下载`
+      })
+      return this.result
     } finally {
       this.downloading = false
     }
   }
 
-  private async doDownloadAndOpen(): Promise<UpdateCheckResult> {
-    const assetUrl = this.result.assetUrl!
-    const assetName = this.result.assetName ?? `Pupil-${this.result.latestVersion}.exe`
-    const expectedSha256 = this.assetDigest?.replace(/^sha256:/i, '').toLowerCase()
-    const dest = join(app.getPath('temp'), assetName)
-
-    // 候选源：阿里云 CDN（PodMuse 同 bucket，国内全速）置顶 + 直连 + 三个镜像。
-    // CDN 文件由发布流水线自动同步；尚未同步时探测 404 自然淘汰，不影响排序逻辑
-    const mirrors = [
-      cdnAssetUrl(this.result.latestVersion ?? '', assetName),
-      ...downloadMirrors(assetUrl)
-    ]
-    const scores = await Promise.all(mirrors.map((u) => scoreSource(u)))
-    const live = scores.filter((s): s is NonNullable<typeof s> => s !== null)
-    const ranked = [...live].sort((a, b) => b.bps - a.bps)
-    // 排序规则：支持 Range 的实测最快优先，其次不支持 Range 的（单流看门狗），探测全挂的按原始顺序垫底
-    type ScoredSource = { url: string; bps: number; supportsRange: boolean }
-    const ordered: ScoredSource[] = [
-      ...ranked.filter((s) => s.supportsRange),
-      ...ranked.filter((s) => !s.supportsRange),
-      ...mirrors
-        .filter((u) => !live.some((s) => s.url === u))
-        .map((url) => ({ url, bps: 0, supportsRange: false }))
-    ]
-    console.log(
-      '[updater] source ranking:',
-      ranked.map((s) => `${new URL(s.url).host} ${(s.bps / 1024 / 1024).toFixed(2)} MB/s${s.supportsRange ? '' : ' (no-range)'}`).join(' | ')
-    )
-
-    this.setResult({ ...this.result, status: 'downloading', progress: 0 })
-
-    let lastError = ''
-    for (const cand of ordered) {
-      try {
-        const total = cand.supportsRange ? await headContentLength(cand.url) : 0
-        const tmpPath = `${dest}.downloading`
-        const hashes = await downloadTo(cand.url, tmpPath, { supportsRange: cand.supportsRange, total }, (recv, elapsed) => {
-          const pct = total > 0 ? Math.min(99, Math.round((recv / total) * 100)) : undefined
-          this.setResult({
-            ...this.result,
-            status: 'downloading',
-            ...(pct !== undefined ? { progress: pct } : {}),
-            speedBps: elapsed > 500 ? recv / (elapsed / 1000) : undefined
-          })
-        })
-        // 完整性校验双模式：GitHub 通道比对官方 sha256 digest；CDN 通道比对 latest.yml 的 sha512。
-        // 两者皆无（旧 API 响应）时跳过校验但保留告警——直接执行未校验安装包等于任意代码执行
-        if (expectedSha256 && hashes.sha256Hex.toLowerCase() !== expectedSha256) {
-          throw new Error(`sha256 mismatch: got ${hashes.sha256Hex.slice(0, 16)}…`)
-        }
-        if (!expectedSha256 && this.assetSha512 && hashes.sha512B64 !== this.assetSha512) {
-          throw new Error('sha512 mismatch against CDN latest.yml')
-        }
-        if (!expectedSha256 && !this.assetSha512) {
-          console.warn('[updater] no digest available — skipped integrity verification')
-        }
-        // 原子落位：tmp -> dest（校验通过后才替换旧文件）
-        await fsp.rename(tmpPath, dest).catch(async () => {
-          // Windows 上 dest 若被占用会 EPERM：删掉重试一次
-          await fsp.rm(dest, { force: true })
-          await fsp.rename(tmpPath, dest)
-        })
-        this.setResult({ ...this.result, status: 'downloaded', progress: 100, assetUrl: undefined })
-        // 一键热更：不再打开安装向导，标记退出后自动静默安装并重启
-        this.pendingInstaller = dest
-        try {
-          new Notification({
-            title: 'Pupil 更新',
-            body: `v${this.result.latestVersion} 校验通过，正在退出并自动安装，稍候自动重启…`
-          }).show()
-        } catch {
-          /* 通知失败不阻断 */
-        }
-        setTimeout(() => app.quit(), 1200)
-        return this.result
-      } catch (error) {
-        lastError = error instanceof Error ? error.message : String(error)
-        console.warn('[updater] download failed, trying next:', new URL(cand.url).host, lastError)
-        await fsp.rm(`${dest}.downloading`, { force: true }).catch(() => undefined)
-      }
-    }
-
-    this.setResult({
-      ...this.result,
-      status: 'error',
-      progress: undefined,
-      error: `全部 ${ordered.length} 个下载源均失败（末次原因：${lastError || '未知'}）。更新器已跟随系统代理——若你开了代理软件，请确认已开启「系统代理」模式后重试；或点下方按钮手动下载`
-    })
-    return this.result
-  }
-
   /**
    * 主进程 will-quit 时调用：取走待静默安装的包路径并拉起安装。
-   * v0.8.1 改为批处理时序（等 1s → taskkill 强杀残留 Pupil.exe → 静默安装 /S）：
-   * 之前直接 spawn 安装器，旧进程尚未完全退出时 NSIS 静默模式会卡在"关闭程序"确认上
-   * 无人点击 => 永远挂住（用户表现「后台没退软件更新就卡住」）。
-   * 批处理由系统调度接管时序，不依赖本进程的退出进度。spawn 失败回退打开向导。
+   * 批处理时序（等 1s → taskkill 残留 → /S 静默 → 显式自启）由系统调度接管，
+   * 不依赖本进程退出进度。spawn 失败回退打开向导。
    */
   consumePendingInstaller(): string | null {
     const installerPath = this.pendingInstaller
@@ -646,7 +354,7 @@ export class Updater {
     if (!installerPath) return null
     try {
       const bat = join(app.getPath('temp'), 'pupil-silent-install.cmd')
-      // 1.2s 等本进程完全退出 → 强杀残留 → 静默安装 → 显式拉起新版。
+      // 1s 等本进程完全退出 → 强杀残留 → 静默安装 → 等 2s → 显式拉起新版。
       // 最后一行必须显式 start：NSIS /S 会跳过完成页，runAfterFinish 在静默模式下不生效
       writeFileSync(
         bat,
@@ -686,4 +394,44 @@ export class Updater {
       /* 通知失败不阻断 */
     }
   }
+}
+
+/** 硬超时 race：promise 挂死也能跳过（不取消底层，仅放弃等待） */
+function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`${what} timed out after ${ms}ms`)), ms)
+    p.then(
+      (v) => {
+        clearTimeout(timer)
+        resolve(v)
+      },
+      (e) => {
+        clearTimeout(timer)
+        reject(e instanceof Error ? e : new Error(String(e)))
+      }
+    )
+  })
+}
+
+/** 版本比较（语义化，忽略 prerelease 后缀；latest > current 才为 true） */
+function isNewer(latest: string, current: string): boolean {
+  const pa = String(latest ?? '')
+    .replace(/^[vV]/, '')
+    .trim()
+    .match(/^\d+(?:\.\d+)*/)
+  const pb = String(current ?? '')
+    .replace(/^[vV]/, '')
+    .trim()
+    .match(/^\d+(?:\.\d+)*/)
+  if (!pa || !pb) return false
+  const a = pa[0].split('.').map(Number)
+  const b = pb[0].split('.').map(Number)
+  const len = Math.max(a.length, b.length)
+  for (let i = 0; i < len; i++) {
+    const va = a[i] ?? 0
+    const vb = b[i] ?? 0
+    if (va > vb) return true
+    if (va < vb) return false
+  }
+  return false
 }

@@ -2,6 +2,18 @@
 
 本文件记录 Pupil 的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [1.0.0-rc.1] - 2026-08-27
+
+> 路线图批次四第 1、3 项落地（4.2 i18n 完成后出 v1.0.0 正式版）。**预发布**：electron-updater 迁移首次实战，欢迎反馈
+
+### 新增
+- **差量更新（blockmap）**：更新内核迁移至 electron-updater——新版本通常只下载变化块（88MB → 常见几 MB）；配套阿里云 CDN 固定目录 feed（`download/pupil/`，同步脚本新增 exe/blockmap 副本）优先 + GitHub provider 兜底，两轮之外保留「系统代理 → 直连」模式重试与 update-check.log 取证
+- **完整性校验由 electron-updater 内建 sha512**（latest.yml），自研批处理安装链（强杀残留 + /S 静默 + 显式自启）原样保留
+- **适配器 SDK 文档** `docs/adapter-sdk.md`：事件模型契约、三条接入通道（HTTP/Hooks/external JS）、内置工具函数索引、贡献者发版检查单
+
+### 变更
+- 移除自研下载管线（Range 分块/多镜像探测）——被 electron-updater 的差量 + 双 provider 取代；`update-core` 的纯函数保留（官网探测仍用）
+
 ## [0.11.0] - 2026-08-27
 
 > 路线图批次三「数据智能」全部落地（docs/ROADMAP-v1.md）

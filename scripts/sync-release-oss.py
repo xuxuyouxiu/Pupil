@@ -48,6 +48,17 @@ def main() -> None:
         bucket.put_object_from_file(key, local, headers={"CacheControl": cache})
         print(f"[sync-oss] OK {key}")
 
+    # v1.0.0 固定目录副本（exe/blockmap + latest.yml 同目录）：
+    # electron-updater generic provider 以 latest.yml 所在目录解析相对文件 URL，
+    # 该目录即应用内更新的首选 feed（差量更新依赖同目录 blockmap）
+    for fname, cache in targets:
+        local = os.path.join(dist, fname)
+        if not os.path.exists(local):
+            continue
+        key = f"download/pupil/{fname}"
+        bucket.put_object_from_file(key, local, headers={"CacheControl": cache})
+        print(f"[sync-oss] OK {key}")
+
     # 固定路径副本（不带版本号）：供官网/外部探测「最新版本号」
     bucket.put_object_from_file(
         "download/pupil/latest.yml", os.path.join(dist, "latest.yml"), headers={"CacheControl": "no-cache"}
