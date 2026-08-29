@@ -18,6 +18,7 @@ import * as path from 'path'
 import { AgentAdapter, AdapterFactory, AdapterHealth } from '../types'
 import { AgentEvent, AgentType } from '../../shared/events'
 import { SqliteDb } from '../sqlite'
+import { sanitizePrompt } from '../../shared/format'
 
 const ID = 'hermes-sqlite'
 const ACTIVE_WINDOW_MS = 10 * 60 * 1000
@@ -96,7 +97,8 @@ export function mapHermesMessage(
 ): AgentEvent | null {
   if (!m.role || m.role === 'session_meta') return null
   if (m.role === 'user') {
-    return { ...base, eventType: 'turn_started', payload: { raw: m } }
+    const prompt = sanitizePrompt(m.content)
+    return { ...base, eventType: 'turn_started', payload: { raw: m, ...(prompt ? { prompt } : {}) } }
   }
   if (m.role === 'tool' && m.tool_name) {
     return { ...base, eventType: 'tool_call_started', payload: { toolName: m.tool_name, raw: m } }

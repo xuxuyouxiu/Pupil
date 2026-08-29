@@ -163,6 +163,8 @@ export const IPC = {
   settingsWindowOpen: 'pupil:settings-window:open',
   /** renderer -> 主进程：查询事件历史（环形缓冲投影，时间倒序） */
   historyGet: 'pupil:history:get',
+  /** renderer -> 主进程：查询任务回顾（v1.2.0；date 缺省今天） */
+  recapGet: 'pupil:recap:get',
   /** renderer -> 主进程：退出应用 */
   appQuit: 'pupil:app:quit'
 } as const

@@ -19,6 +19,7 @@ import * as path from 'path'
 import { AgentAdapter, AdapterFactory, AdapterHealth } from '../types'
 import { AgentEvent, TokenUsage } from '../../shared/events'
 import { readUtf8Incremental } from '../incremental'
+import { sanitizePrompt, basenameOf } from '../../shared/format'
 import { safeJoin } from '../safe-path'
 
 const ID = 'zcode-rollout'
@@ -73,9 +74,10 @@ export function mapModelIoLine(
   const ts = lineTimestamp(line.completedAt)
   const turnId = typeof line.turnId === 'string' && line.turnId ? line.turnId : undefined
 
-  // 轮次边界：turnId 首见/变化即新一轮
+  // 轮次边界：turnId 首见/变化即新一轮。v1.2.0 附带本轮用户指令摘要（回顾系统任务标题）
   if (turnId && turnId !== prevTurnId) {
-    events.push({ eventType: 'turn_started', timestamp: ts })
+    const prompt = extractPrompt(line)
+    events.push({ eventType: 'turn_started', timestamp: ts, ...(prompt ? { payload: { prompt } } : {}) })
   }
 
   const resp = (line.response ?? {}) as Record<string, unknown>
@@ -109,10 +111,53 @@ export function mapModelIoLine(
     return { events, turnId }
   }
 
-  // 活动脉冲：回合进行中的每次请求
-  events.push({ eventType: 'thinking', timestamp: ts, payload: { usage: extractUsage(resp) } })
+  // 活动脉冲：回合进行中的每次请求。v1.2.0 顺带提取 toolCalls 的文件轨迹
+  const files = extractFiles(resp)
+  events.push({
+    eventType: 'thinking',
+    timestamp: ts,
+    payload: { usage: extractUsage(resp), ...(files.length > 0 ? { files } : {}) }
+  })
 
   return { events, turnId }
+}
+
+/** v1.2.0 本轮用户指令摘要：request.messages 中最后一条 user 的文本 content */
+function extractPrompt(line: Record<string, unknown>): string | undefined {
+  const req = line.request as Record<string, unknown> | undefined
+  const msgs = req?.messages
+  if (!Array.isArray(msgs)) return undefined
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    const m = msgs[i] as Record<string, unknown> | undefined
+    if (!m || m.role !== 'user') continue
+    const c = m.content
+    if (typeof c === 'string') return sanitizePrompt(c)
+    if (Array.isArray(c)) {
+      for (const block of c) {
+        if (block && (block as Record<string, unknown>).type === 'text') {
+          return sanitizePrompt((block as Record<string, unknown>).text)
+        }
+      }
+    }
+    return undefined
+  }
+  return undefined
+}
+
+/** v1.2.0 文件轨迹：response.toolCalls[].input 的 file_path/path（basename，去重） */
+function extractFiles(resp: Record<string, unknown>): string[] {
+  const tcs = resp.toolCalls as Array<Record<string, unknown>> | undefined
+  if (!Array.isArray(tcs)) return []
+  const out: string[] = []
+  for (const tc of tcs) {
+    const input = tc.input as Record<string, unknown> | undefined
+    if (!input || typeof input !== 'object') continue
+    for (const key of ['file_path', 'path', 'filePath']) {
+      const base = basenameOf(input[key])
+      if (base && !out.includes(base) && out.length < 12) out.push(base)
+    }
+  }
+  return out
 }
 
 /** response.usage 形态：{ inputTokens(含缓存读/写), outputTokens, cacheReadTokens, cacheWriteTokens } */

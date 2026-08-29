@@ -4,6 +4,7 @@
 import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron'
 import { SessionView, SessionHistoryItem, SoundKind, NotifyFilter } from '../shared/events'
 import { IPC, SettingsSnapshot, UpdateCheckResult } from '../shared/ipc-channels'
+import { TaskCard, RecapTotals } from '../core/recap'
 
 export interface PupilApi {
   /** 拉取全量会话快照 */
@@ -62,6 +63,8 @@ export interface PupilApi {
   previewCustomSound(kind: SoundKind): Promise<boolean>
   /** 事件历史页签：跨会话合并时间线（时间倒序） */
   getHistory(limit?: number): Promise<SessionHistoryItem[]>
+  /** 任务回顾（v1.2.0）：date 缺省今天；返回卡片与合计 */
+  getRecap(date?: string): Promise<{ date: string; cards: TaskCard[]; totals: RecapTotals }>
   /** 检查更新（GitHub Releases） */
   checkUpdate(): Promise<UpdateCheckResult>
   /** 查询当前更新状态（含下载进度） */
@@ -123,6 +126,7 @@ const api: PupilApi = {
   clearCustomSound: (kind) => ipcRenderer.invoke(IPC.customSoundClear, kind),
   previewCustomSound: (kind) => ipcRenderer.invoke(IPC.customSoundPreview, kind),
   getHistory: (limit) => ipcRenderer.invoke(IPC.historyGet, limit),
+  getRecap: (date) => ipcRenderer.invoke(IPC.recapGet, date),
   quit: () => ipcRenderer.send(IPC.appQuit),
   onSoundPlay: (cb) => {
     const listener = (_e: IpcRendererEvent, payload: { type: string; pack?: string; volume?: number; custom?: { name: string; url?: string; data?: Uint8Array } }): void =>

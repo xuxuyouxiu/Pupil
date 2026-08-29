@@ -26,7 +26,11 @@ export interface AgentEventPayload {
   modelName?: string // thinking
   pid?: number // 上报方附带的进程号（用于窗口跳转）
   title?: string // 轮询型源（hermes/codex）附带的真实会话标题（面板展示 + 窗口匹配）
-  /** v0.11.0 模型请求级 token 用量（assistant 消息行附带） */
+  /** v1.2.0 本轮用户指令摘要（首 120 字符，回顾系统的任务标题） */
+  prompt?: string
+  /** v1.2.0 本工具调用涉及的文件（尽力而为，回顾系统展示） */
+  files?: string[]
+  /** v1.1.0 模型请求级 token 用量（assistant 消息行附带） */
   usage?: TokenUsage
   raw?: unknown // 原始行/事件，调试用
 }

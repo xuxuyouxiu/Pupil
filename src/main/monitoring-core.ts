@@ -20,6 +20,7 @@ import { SessionRegistry } from '../core/session-registry'
 import { InferenceEngine } from '../core/inference'
 import { resolveStrategy, notifyAllowed } from '../core/notify-rules'
 import { DailyDigest, DigestSummary } from '../core/digest'
+import { RecapEngine, TaskCard, RecapTotals } from '../core/recap'
 import { AgentEvent, ModelPricing, NotifyFilter, NOTIFY_FILTER_DEFAULTS, SessionHistoryItem, SessionView, sessionKey } from '../shared/events'
 import { t } from '../shared/i18n'
 import { SettingsSnapshot, AdapterStatus } from '../shared/ipc-channels'
@@ -66,6 +67,8 @@ export class MonitoringCore {
   private mutedSessions: Set<string>
   /** v0.11.0 每日简报 */
   private digest: DailyDigest
+  /** v1.2.0 任务回顾引擎（recap-file-store 注入） */
+  readonly recap: RecapEngine
   /** v0.8.0 通知粒度开关：按事件类别关闭音效+通知（视觉状态不受影响） */
   private notifyFilter: NotifyFilter
   /** v0.5.0：上一 tick 是否存在 done 保持态（用于检测窗口到期触发回落广播） */
@@ -75,7 +78,11 @@ export class MonitoringCore {
   private adapterIds: string[] = []
   private hooksInstaller = new HooksInstaller()
 
-  constructor(private config: ConfigStore, private appVersion: string) {
+  constructor(
+    private config: ConfigStore,
+    private appVersion: string,
+    recapStore?: import('../core/recap').RecapStore
+  ) {
     this.httpIngest = new HttpIngestAdapter()
     this.dnd = config.get('dnd') ?? false
     this.muted = config.get('muted') ?? false
@@ -86,6 +93,15 @@ export class MonitoringCore {
     this.registry.setPricing((agentType) => customPricing[agentType] ?? DEFAULT_PRICING[agentType])
     // v0.11.0 每日简报：默认每天 21:00（config.digestHour 覆盖）
     this.digest = new DailyDigest(config.get('digestHour') ?? 21, (s) => this.emitDigest(s))
+    // v1.2.0 回顾引擎（store 由 main 注入；未注入则用最小空实现保持可构造性）
+    this.recap = new RecapEngine(
+      recapStore ?? {
+        load: () => null,
+        save: () => undefined,
+        listDates: () => [],
+        drop: () => undefined
+      }
+    )
     this.inference = new InferenceEngine(this.registry, {
       timeoutThresholdMs: config.get('timeoutThresholdMs') ?? 10 * 60 * 1000,
       disconnectThresholdMs: config.get('disconnectThresholdMs') ?? 30 * 1000,
@@ -162,6 +178,9 @@ export class MonitoringCore {
       if (!this.adapterIds.includes(a.id)) this.adapterIds.push(a.id)
     }
 
+    // v1.2.0 回顾：恢复上次未结卡 + 启动清扫 90 天前文件
+    this.recap.recover()
+    this.recap.prune(90)
     // 推断 tick：每秒检查一次（仅比较时间戳，开销可忽略）
     this.inferenceTimer = setInterval(() => {
       const changed = this.inference.tick()
@@ -206,6 +225,8 @@ export class MonitoringCore {
 
   async stop(): Promise<void> {
     if (this.inferenceTimer) clearInterval(this.inferenceTimer)
+    this.recap.recover()
+    this.recap.flush()
     await this.adapters.stopAll()
   }
 
@@ -229,6 +250,8 @@ export class MonitoringCore {
           : 0,
       usage: event.payload?.usage
     })
+    // v1.2.0 回顾引擎入账
+    this.recap.onEvent(event)
     this.broadcast()
   }
 
@@ -387,6 +410,15 @@ export class MonitoringCore {
   /** 事件历史（跨会话合并时间线，倒序） */
   history(limit?: number): SessionHistoryItem[] {
     return this.registry.history(limit)
+  }
+
+  /** v1.2.0 回顾视图（惰性加载 + 打开中卡片合并） */
+  recapView(date?: string): { date: string; cards: TaskCard[]; totals: RecapTotals } {
+    const today = new Date()
+    const p = (n: number): string => String(n).padStart(2, '0')
+    const fallback = `${today.getFullYear()}-${p(today.getMonth() + 1)}-${p(today.getDate())}`
+    const d = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : fallback
+    return this.recap.view(d)
   }
 
   /** 运行时启停 adapter，并把状态持久化到 config */

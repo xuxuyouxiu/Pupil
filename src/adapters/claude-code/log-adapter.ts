@@ -22,6 +22,7 @@ import * as path from 'path'
 import { AgentAdapter, AdapterFactory, AdapterHealth } from '../types'
 import { AgentEvent, AgentType } from '../../shared/events'
 import { readUtf8Incremental } from '../incremental'
+import { sanitizePrompt, basenameOf } from '../../shared/format'
 
 const ID = 'claude-code-log'
 
@@ -115,8 +116,9 @@ export function mapLine(line: Record<string, unknown>): AgentEvent[] {
   if (type === 'user') {
     const content = message?.content
     if (typeof content === 'string') {
-      // 用户提交 prompt -> 新一轮开始
-      events.push({ ...base, eventType: 'turn_started', payload: { raw: line } })
+      // 用户提交 prompt -> 新一轮开始（v1.2.0 附带摘要供回顾系统）
+      const prompt = sanitizePrompt(content)
+      events.push({ ...base, eventType: 'turn_started', payload: { raw: line, ...(prompt ? { prompt } : {}) } })
     } else if (Array.isArray(content)) {
       // 工具结果回传 -> 工具调用结束
       for (const block of content) {
@@ -139,11 +141,22 @@ export function mapLine(line: Record<string, unknown>): AgentEvent[] {
     if (Array.isArray(content)) {
       for (const block of content) {
         if (block && (block as { type?: string }).type === 'tool_use') {
-          const b = block as { name?: string }
+          const b = block as { name?: string; input?: Record<string, unknown> }
+          // v1.2.0 尽力而为的文件轨迹（Read/Edit/Write 等的 file_path/path）
+          let files: string[] | undefined
+          if (b.input && typeof b.input === 'object') {
+            for (const key of ['file_path', 'path', 'filePath']) {
+              const base2 = basenameOf(b.input[key])
+              if (base2) {
+                files = [base2]
+                break
+              }
+            }
+          }
           events.push({
             ...base,
             eventType: 'tool_call_started',
-            payload: { toolName: b.name, raw: line }
+            payload: { toolName: b.name, raw: line, ...(files ? { files } : {}) }
           })
         }
       }

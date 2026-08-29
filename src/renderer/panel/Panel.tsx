@@ -9,9 +9,10 @@ import { useSessions } from '../ball/use-sessions'
 import { SessionRow } from './SessionRow'
 import { Settings } from './Settings'
 import { EventHistory } from './EventHistory'
+import { RecapView } from './RecapView'
 import { Moon, Settings as SettingsIcon, Radar, History } from '../shared/icons'
 
-type Tab = 'sessions' | 'history'
+type Tab = 'sessions' | 'history' | 'recap'
 
 const STATE_LABEL_KEY: Record<DisplayState, I18nKey> = {
   initializing: 'stateInitializing',
@@ -144,6 +145,8 @@ export function Panel() {
       <div className="panel-body">
         {tab === 'history' ? (
           <EventHistory />
+        ) : tab === 'recap' ? (
+          <RecapView />
         ) : sorted.length === 0 ? (
           <div className="empty-state">
             <Radar size={32} strokeWidth={1.5} />
@@ -191,6 +194,12 @@ export function Panel() {
         >
           <History size={13} />
           {t('tabHistory')}
+        </button>
+        <button
+          className={`tab ${tab === 'recap' ? 'active' : ''}`}
+          onClick={() => setTab('recap')}
+        >
+          {t('tabRecap')}
         </button>
       </footer>
     </div>

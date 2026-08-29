@@ -15,6 +15,7 @@ import { Notifier } from './notifier'
 import { AutoLaunch } from './auto-launch'
 import { ensureCliShim, ensureCliOnPath } from './paths'
 import { FileHistoryStore } from './history-store'
+import { FileRecapStore } from './recap-file-store'
 import { activateSessionWindow } from '../integrations/win32-window'
 import { Updater } from './updater'
 import { IPC } from '../shared/ipc-channels'
@@ -55,7 +56,7 @@ function bootstrap(): void {
   // 恒返回 en-US——此前「托盘永远英文、面板中文」对不上的根因）。
   // 用户也可在设置里手动覆盖（config.locale）。
   const config = new ConfigStore()
-  const core = new MonitoringCore(config, app.getVersion())
+  const core = new MonitoringCore(config, app.getVersion(), new FileRecapStore())
   const updater = new Updater()
   const windows = new WindowManager(config)
   const notifier = new Notifier(() => windows.ballWindow, config)
@@ -99,6 +100,8 @@ function bootstrap(): void {
   // P2-8 事件历史持久化：启动恢复 + 60s 节流落盘（有新事件才写）
   core.registry.setHistoryStore(new FileHistoryStore())
   const historySaver = setInterval(() => core.registry.saveHistory(), 60_000)
+  // v1.2.0 回顾落盘：5s 防抖（引擎内脏标记，幂等）
+  const recapSaver = setInterval(() => core.recap.flush(), 5_000)
   // Toast 点击：精准跳转对应会话窗口（P2；失败由 activateSessionWindow 内部降级）
   notifier.setClickHandler((view) => {
     void activateSessionWindow(view)
@@ -317,6 +320,8 @@ function bootstrap(): void {
   ipcMain.handle(IPC.historyGet, (_e, limit?: number) =>
     core.history(typeof limit === 'number' ? limit : undefined)
   )
+  // v1.2.0 回顾查询（date 缺省今天；越界由引擎钳制）
+  ipcMain.handle(IPC.recapGet, (_e, date?: string) => core.recapView(date))
   ipcMain.on(IPC.appQuit, () => app.quit())
 
   app.whenReady().then(() => {
@@ -368,6 +373,8 @@ function bootstrap(): void {
   app.on('before-quit', () => {
     gaze.stop()
     clearInterval(historySaver)
+    clearInterval(recapSaver)
+    core.recap.flush()
     core.registry.saveHistory() // 退出前最后一次落盘（P2-8）
     core.stop()
     windows.destroyAll()

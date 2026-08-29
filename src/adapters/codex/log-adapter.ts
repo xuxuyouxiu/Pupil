@@ -22,6 +22,7 @@ import { AgentAdapter, AdapterFactory, AdapterHealth } from '../types'
 import { AgentEvent, AgentType } from '../../shared/events'
 import { SqliteDb } from '../sqlite'
 import { readUtf8Incremental } from '../incremental'
+import { sanitizePrompt } from '../../shared/format'
 import { safeJoin } from '../safe-path'
 
 const ID = 'codex-log'
@@ -52,6 +53,8 @@ interface ThreadRow {
   title?: string
   updated_at_ms?: number
   tokens_used?: number
+  /** v1.2.0 会话级兜底指令摘要（回顾系统；无法按轮取，每轮复用） */
+  first_user_message?: string
 }
 
 /** rollout tail 状态 */
@@ -185,7 +188,7 @@ export class CodexLogAdapter implements AgentAdapter {
       }
       const now = Date.now()
       const rows = db.query(
-        `SELECT id, cwd, title, updated_at_ms, tokens_used FROM threads WHERE archived=0 ORDER BY updated_at_ms DESC`
+        `SELECT id, cwd, title, updated_at_ms, tokens_used, first_user_message FROM threads WHERE archived=0 ORDER BY updated_at_ms DESC`
       ) as unknown as ThreadRow[]
 
       for (const r of rows) {
@@ -208,6 +211,7 @@ export class CodexLogAdapter implements AgentAdapter {
           this.seen.set(r.id, { updated, tokens, pulsing: true, lastChangedAt: now })
           // v1.0.3 tokens_used 为会话累计，差值作为增量用量上报（计入输入侧，成本按输入价折算）
           const usageDelta = Math.max(0, tokens - prev.tokens)
+          const prompt = sanitizePrompt(r.first_user_message)
           this.emit?.({
             source: ID,
             agentType: 'codex',
@@ -218,6 +222,7 @@ export class CodexLogAdapter implements AgentAdapter {
             payload: {
               title: r.title,
               raw: { updated, tokens },
+              ...(prompt ? { prompt } : {}),
               ...(usageDelta > 0
                 ? { usage: { inputTokens: usageDelta, outputTokens: 0 } }
                 : {})
