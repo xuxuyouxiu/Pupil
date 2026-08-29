@@ -15,6 +15,7 @@ import { EyeSystem, PetMood } from './EyeSystem'
 import { useSessions } from './use-sessions'
 import { playSound, setSoundConfig, playPoke, startPurr, stopPurr } from './sound'
 import { PettingArbiter } from './petting'
+import { JuggleScheduler } from './juggle'
 import { BALL_SIZE, BUBBLE_BAND, BALL_WINDOW_INSET_X } from '../../shared/constants'
 
 /** 窗口总高：气泡带 + 球 */
@@ -134,7 +135,55 @@ export function Ball() {
   sessionsRef.current = sessions
 
   /** 主进程边沿检测推来的状态播报 */
-  useEffect(() => window.pupil.onSpeechBubble((text) => showBubble(text)), [])
+  // ---- v1.4.0 闲时杂技：全空闲 ≥90s 后随机抛球 7s；任何状态变化/交互立即收球 ----
+  const juggleRef = useRef<JuggleScheduler | null>(null)
+  if (!juggleRef.current) juggleRef.current = new JuggleScheduler()
+  const juggleGRef = useRef<SVGGElement | null>(null)
+
+  useEffect(() => {
+    const g = juggleGRef.current
+    const sched = juggleRef.current
+    if (!g || !sched) return
+    const balls = Array.from(g.querySelectorAll<SVGCircleElement>('.j-ball'))
+    const K = 21 / 114.2705
+    let raf = 0
+    let lastTick = performance.now()
+    const frame = (t: number): void => {
+      // 显示态 idle 且非勿扰时才喂 tick；用户 pointerdown 由 arbiter 侧调 poke
+      const active = sched.tick(display === 'idle' && !dnd, t, false)
+      g.style.display = active ? '' : 'none'
+      if (active) {
+        const T = 1400 // 抛接周期 ms
+        balls.forEach((c, i) => {
+          const ph = ((t - lastTick) / T + i / 3) % 1
+          const x = 28 + Math.sin(ph * Math.PI * 2) * 14 * K * 3
+          const y = 12 - Math.abs(Math.sin(ph * Math.PI)) * 10 * K * 3
+          c.setAttribute('cx', x.toFixed(1))
+          c.setAttribute('cy', y.toFixed(1))
+          c.setAttribute('opacity', '0.95')
+        })
+        raf = requestAnimationFrame(frame)
+      } else {
+        // 非活动：低频待机轮询（10Hz），恢复空闲计时精度足够
+        setTimeout(() => {
+          raf = requestAnimationFrame(frame)
+        }, 100)
+      }
+    }
+    raf = requestAnimationFrame(frame)
+    return () => cancelAnimationFrame(raf)
+  }, [display, dnd])
+
+  useEffect(() => {
+    const poke = (): void => juggleRef.current?.poke(performance.now())
+    window.addEventListener('pointerdown', poke)
+    return () => window.removeEventListener('pointerdown', poke)
+  }, [])
+
+  useEffect(() => {
+    const off = window.pupil.onSpeechBubble((text) => showBubble(text))
+    return off
+  }, [])
 
   const showBubble = useCallback((text: string) => {
     if (bubbleTimerRef.current) window.clearTimeout(bubbleTimerRef.current)
@@ -349,6 +398,12 @@ export function Ball() {
           {display !== 'idle' && (
             <circle className="state-ring" cx={28} cy={28} r={24.5} stroke={`var(--state-${display})`} />
           )}
+          {/* v1.4.0 闲时杂技：三颗小球在球顶抛接（全空闲随机触发，rAF 驱动） */}
+          <g ref={juggleGRef} className="juggle" style={{ display: 'none' }} aria-hidden>
+            {[0, 1, 2].map((i) => (
+              <circle key={i} className="j-ball" cx={28} cy={12} r={2.6} fill="var(--eye-white)" />
+            ))}
+          </g>
           {/* v0.10.0 多会话徽标：左上角数字（活跃会话 ≥2 时显示），颜色随聚合状态 */}
           {activeCount >= 2 && (
             <g className="session-badge">
