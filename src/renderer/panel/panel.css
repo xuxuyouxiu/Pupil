@@ -774,3 +774,111 @@ body,
   padding: 8px 12px; border-top: 1px solid var(--border-soft);
   font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums;
 }
+
+
+/* ==================== v1.3.0 面板 UI 翻新（只动皮肤不动逻辑） ==================== */
+
+/* 会话行 -> 悬浮卡片：左状态色条、圆角、hover 上浮 + 描边亮化 + 状态点辉光 */
+.session-list {
+  padding: 6px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.session-row {
+  position: relative;
+  height: auto;
+  min-height: 44px;
+  padding: 6px 10px 6px 13px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: var(--surface);
+  overflow: hidden;
+}
+.session-row::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--border);
+  transition: background 120ms ease-out;
+}
+.session-row:hover {
+  background: var(--surface-warm);
+  border-color: var(--border);
+  transform: translateY(-1px);
+}
+.session-row:hover::before {
+  background: var(--accent);
+}
+/* 状态点辉光（行内 dot 颜色即状态语义） */
+.session-row .dot {
+  box-shadow: 0 0 6px currentColor;
+}
+
+/* 底部页签 -> 胶囊分段控件 */
+.panel-tabs {
+  margin: 6px 8px 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: 999px;
+  background: var(--surface);
+  overflow: hidden;
+}
+.tab {
+  border-radius: 999px;
+  transition: background 120ms ease-out, color 120ms ease-out;
+}
+.tab.active {
+  background: rgba(37, 99, 235, 0.14);
+  box-shadow: none;
+  color: var(--accent);
+}
+
+/* 顶栏汇总 chips 化 */
+.summary-item {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+}
+.summary-item .dot {
+  box-shadow: 0 0 5px currentColor;
+}
+
+/* 事件历史：行圆角化 + hover 对齐卡片语言 */
+.history-row {
+  border-bottom: none;
+  border-radius: 8px;
+  margin: 0 4px;
+}
+.history-day {
+  margin: 0 4px;
+  border-radius: 6px;
+}
+
+/* 回顾卡片同样吃新皮肤 */
+.recap-card {
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  margin-bottom: 4px;
+  background: var(--surface);
+}
+
+/* 空状态插画化：图标装圆底 */
+.empty-state > svg {
+  padding: 14px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+}
+
+/* 滚动条细化 */
+.panel-body::-webkit-scrollbar {
+  width: 4px;
+}
+.panel-body::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+}
