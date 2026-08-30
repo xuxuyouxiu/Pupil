@@ -31,6 +31,11 @@ export class InferenceEngine {
    * 去重/勿扰/静音判断在回调执行端。
    */
   onFlagNotified: ((kind: InferredFlag, view: SessionView) => void) | null = null
+  /**
+   * v1.7.0 进程活性豁免：由 MonitoringCore 注入（会话 agent 的宿主进程 CPU 忙 = true）。
+   * 忙进程的静默是「日志滞后/后台命令」而非卡死或断连——timeout/disconnected 双豁免。
+   */
+  processBusy: (() => boolean) | null = null
 
   constructor(
     private registry: SessionRegistry,
@@ -49,9 +54,12 @@ export class InferenceEngine {
       // timeout：仅"运行中"（thinking/tool_calling）静默超阈值才算超时——
       // idle（等用户下一句）、waiting_input（等用户确认权限）、done 保持窗口内的静默
       // 都是正常等待而非卡死；此前 state !== 'idle' 会把挂机未确认的会话也报"已超时"
+      // v1.7.0：宿主进程忙（后台命令/模型推理中）时豁免——日志滞后型源的核心盲区
+      const busy = this.processBusy?.() ?? false
       if (
         (view.state === 'thinking' || view.state === 'tool_calling') &&
-        elapsed >= this.options.timeoutThresholdMs
+        elapsed >= this.options.timeoutThresholdMs &&
+        !busy
       ) {
         if (!view.flags.timeout) kind = 'timeout'
         next.timeout = true
@@ -64,7 +72,8 @@ export class InferenceEngine {
         this.options.disconnectThresholdMs
       if (
         (view.state === 'thinking' || view.state === 'tool_calling') &&
-        elapsed >= threshold
+        elapsed >= threshold &&
+        !busy
       ) {
         // timeout 与断连同时命中时 timeout 优先（更严重的语义）
         if (!view.flags.disconnected && kind === null) kind = 'disconnected'

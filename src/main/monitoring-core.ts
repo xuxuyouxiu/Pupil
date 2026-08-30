@@ -23,7 +23,8 @@ import { InferenceEngine } from '../core/inference'
 import { resolveStrategy, notifyAllowed } from '../core/notify-rules'
 import { DailyDigest, DigestSummary } from '../core/digest'
 import { RecapEngine, TaskCard, RecapTotals } from '../core/recap'
-import { AgentEvent, ModelPricing, NotifyFilter, NOTIFY_FILTER_DEFAULTS, SessionHistoryItem, SessionView, sessionKey } from '../shared/events'
+import { ProcessActivityTracker } from '../core/process-activity'
+import { AgentEvent, AgentType, ModelPricing, NotifyFilter, NOTIFY_FILTER_DEFAULTS, SessionHistoryItem, SessionView, sessionKey } from '../shared/events'
 import { t } from '../shared/i18n'
 import { SettingsSnapshot, AdapterStatus } from '../shared/ipc-channels'
 import { ConfigStore } from './config'
@@ -73,6 +74,10 @@ export class MonitoringCore {
   private digest: DailyDigest
   /** v1.2.0 任务回顾引擎（recap-file-store 注入） */
   readonly recap: RecapEngine
+  /** v1.7.0 宿主进程活性跟踪（zcode/gemini/codex/opencode 四个日志滞后型源） */
+  private procTracker = new ProcessActivityTracker()
+  private procSampleTimer: NodeJS.Timeout | null = null
+  private procBusy = false
   /** v0.8.0 通知粒度开关：按事件类别关闭音效+通知（视觉状态不受影响） */
   private notifyFilter: NotifyFilter
   /** v0.5.0：上一 tick 是否存在 done 保持态（用于检测窗口到期触发回落广播） */
@@ -124,6 +129,8 @@ export class MonitoringCore {
     })
     // v0.4.1：超时/断连标记首次翻转 → 音效+Toast（此前只变色不出声）
     this.inference.onFlagNotified = (kind, view) => this.notifyInferredFlag(kind, view)
+    // v1.7.0 进程活性豁免：宿主忙 = 后台命令/模型推理中，不判超时/断连
+    this.inference.processBusy = () => this.procBusy
   }
 
   /** 订阅快照广播；返回取消订阅函数 */
@@ -191,6 +198,59 @@ export class MonitoringCore {
     // v1.2.0 回顾：恢复上次未结卡 + 启动清扫 90 天前文件
     this.recap.recover()
     this.recap.prune(90)
+    // v1.7.0 进程活性采样（2s）：四个日志滞后型源的宿主进程集合
+    const HARNESS_PROC_PATTERNS = [/^zcode/i, /^gemini/i, /^codex/i, /^opencode/i]
+    const sampleProcs = async (): Promise<void> => {
+      try {
+        const { exec } = await import('child_process')
+        const { promisify } = await import('util')
+        // tasklist 一次拉全表，本地过滤进程名（无 PowerShell 依赖）
+        const out = await promisify(exec)('tasklist /fo csv /nh', { timeout: 5000 })
+        const pids: number[] = []
+        for (const line of String(out).split('\n')) {
+          const m = line.match(/^"([^"]+)","(\d+)"/)
+          if (!m) continue
+          const name = m[1]
+          if (HARNESS_PROC_PATTERNS.some((re) => re.test(name))) pids.push(Number(m[2]))
+        }
+        const { sampleCpu } = await import('../integrations/proc-activity-win')
+        this.procTracker.sample(sampleCpu(pids), Date.now())
+        const wasBusy = this.procBusy
+        this.procBusy = this.procTracker.anyBusy()
+        // 空窗修正：日志显示完成/idle 但进程忙 → 找相关源运行中会话维持广播
+        if (this.procBusy && !wasBusy) repairRunningStates()
+      } catch {
+        /* 采样失败静默：退化回纯日志信号 */
+      }
+    }
+
+    // v1.7.0 空窗修正：进程转忙 = 用户刚发消息/后台命令在跑。
+    // 把该源"已完成/idle"的近期会话修正回 running（注入 thinking 事件由状态机解释），
+    // 消除「刚发消息就显示完成」与「后台命令跑着却显示完成」两类误报。
+    const repairRunningStates = (): void => {
+      const AGENTS_OF_INTEREST: AgentType[] = ['zcode', 'gemini', 'codex', 'opencode']
+      const now = Date.now()
+      let changed = false
+      for (const view of this.registry.snapshot()) {
+        if (!AGENTS_OF_INTEREST.includes(view.agentType)) continue
+        if (view.state !== 'idle' && view.state !== 'done') continue
+        // 只修正最近 30 分钟活跃的会话（避免翻出久远历史）
+        if (now - view.lastEventAt > 30 * 60_000) continue
+        this.registry.apply({
+          source: 'proc-activity',
+          agentType: view.agentType,
+          sessionId: view.sessionId,
+          eventType: 'thinking',
+          timestamp: now,
+          payload: { raw: { busyRepair: true } }
+        })
+        changed = true
+      }
+      if (changed) this.broadcast()
+    }
+
+    void sampleProcs()
+    this.procSampleTimer = setInterval(() => void sampleProcs(), 2000)
     // 推断 tick：每秒检查一次（仅比较时间戳，开销可忽略）
     this.inferenceTimer = setInterval(() => {
       const changed = this.inference.tick()
@@ -235,6 +295,7 @@ export class MonitoringCore {
 
   async stop(): Promise<void> {
     if (this.inferenceTimer) clearInterval(this.inferenceTimer)
+    if (this.procSampleTimer) clearInterval(this.procSampleTimer)
     this.recap.recover()
     this.recap.flush()
     await this.adapters.stopAll()
