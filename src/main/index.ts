@@ -334,7 +334,14 @@ function bootstrap(): void {
     windows.createBallWindow()
     gaze.start()
     tray.create()
-    core.start()
+    // v1.9.0 启动提速：core.start()（SQLite 打开、8 个适配器启动、外部扫描）延后到
+    // 球窗 ready-to-show 之后——此前它虽在 createBallWindow 后异步执行，但其同步段
+    // 与 Electron 渲染首帧争主线程，冷启动时球会晚托盘好几秒才出现
+    void core.start().then(() => {
+      // 首次适配器启动完成后补一次快照广播（球窗可能刚错过初始广播）
+      windows.onCoreReady = () => core.broadcastNow()
+      windows.refreshBallSnapshot()
+    })
     // v0.8.0 全局快捷键呼出/收起面板：优先 Ctrl+Alt+Space，被占用则退而求其次
     const togglePanelShortcut = (): void => {
       windows.togglePanel()

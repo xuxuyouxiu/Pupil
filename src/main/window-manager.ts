@@ -88,6 +88,9 @@ export class WindowManager {
     }
     win.once('ready-to-show', showBall)
     win.webContents.once('did-finish-load', () => setTimeout(showBall, 0))
+    // v1.9.0 显示兜底：ready-to-show 偶发不发（渲染卡顿/杀软拦截）导致球永不出来——
+    // 1.5s 强制显示。透明窗口此时可能空白一瞬，但远好过"托盘在球不在"的困惑
+    setTimeout(showBall, 1500)
     // v1.5.0 球可见性变化回调（tray 勾选状态同步；后台模式入口统一走 hideToBackground/restore）
     win.on('show', () => this.onBallVisibilityChanged?.(true))
     win.on('hide', () => this.onBallVisibilityChanged?.(false))
@@ -343,6 +346,15 @@ export class WindowManager {
     const win = this.ball
     return !win || win.isDestroyed() || !win.isVisible()
   }
+
+  /** v1.9.0 向球窗补发最新会话快照（core.start 完成后回填，避免球窗错过初始广播） */
+  refreshBallSnapshot(): void {
+    // 实际广播由 monitoring-core 的订阅回调完成；此处通过触发一次空广播实现解耦
+    if (this.onCoreReady) this.onCoreReady()
+  }
+
+  /** core.start 完成回调（index.ts 注入） */
+  onCoreReady: (() => void) | null = null
 
   /** v1.5.0 一键切换后台模式（全局快捷键 Ctrl+Alt+B） */
   toggleBackgroundMode(): void {

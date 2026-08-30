@@ -387,6 +387,11 @@ export class MonitoringCore {
   }
 
   private broadcast(): void {
+    this.broadcastNow()
+  }
+
+  /** 公开广播入口（core.start 完成后回填球窗快照用） */
+  broadcastNow(): void {
     const snapshot = this.registry.snapshot()
     for (const fn of this.subscribers) fn(snapshot)
   }
