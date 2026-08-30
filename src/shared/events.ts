@@ -32,6 +32,8 @@ export interface AgentEventPayload {
   files?: string[]
   /** v1.1.0 模型请求级 token 用量（assistant 消息行附带） */
   usage?: TokenUsage
+  /** v1.1.3 瞬态错误（并发限制/网络抖动等会自动重试的错误），通知可降级处理 */
+  transient?: boolean
   raw?: unknown // 原始行/事件，调试用
 }
 

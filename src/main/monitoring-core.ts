@@ -311,6 +311,12 @@ export class MonitoringCore {
     // v0.9.0 单会话静音 + v0.8.0 通知粒度：被忽略的路径不发声不弹 Toast（broadcast 照常，视觉保留）
     if (!this.dnd && !sessionMuted && notifyAllowed(event.eventType, this.notifyFilter)) {
       const strategy = resolveStrategy(event, view, { dnd: this.dnd, muted: this.muted })
+      // v1.1.3 瞬态错误降级：宿主会自动重试的错误（并发限制/网络抖动）不响出错音、
+      // 只发一次轻量 Toast——刺耳的 error 音留给真正的失败
+      if (event.eventType === 'error' && event.payload?.transient) {
+        strategy.sound = false
+        strategy.title = `${view?.title ?? event.sessionId} 瞬态错误（自动重试中）`
+      }
       this.notifyExecutor?.(strategy, event, view)
     }
     // v0.11.0 每日简报入账

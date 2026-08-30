@@ -82,7 +82,12 @@ export function mapModelIoLine(
 
   const resp = (line.response ?? {}) as Record<string, unknown>
 
-  // error：请求失败/重试在此暴露
+  // error 分级（v1.1.3）：
+  //   1. 打断类（preempt/terminat/abort/cancel/interrupt）= 用户插话/主动取消的正常行为
+  //      → 不发 error，只当轮次边界（下一条 user 消息随后就到）
+  //   2. 瞬态类（concurrency/网络/timeout/rate）= 会自动重试 → 发 error 但标记 transient，
+  //      前端可静音处理；保留通知供感知
+  //   3. 其余 → 正常 error
   if (line.error) {
     const err = line.error
     const message =
@@ -91,7 +96,17 @@ export function mapModelIoLine(
         : err instanceof Object && typeof (err as Record<string, unknown>).message === 'string'
           ? ((err as Record<string, unknown>).message as string)
           : JSON.stringify(err).slice(0, 200)
-    events.push({ eventType: 'error', timestamp: ts, payload: { errorMessage: message, raw: line } })
+    if (isInterruptError(message)) {
+      // 用户插话打断当前轮：不发 error（错误音效误导），归为 thinking 脉冲即可
+      events.push({ eventType: 'thinking', timestamp: ts, payload: { raw: line } })
+    } else {
+      const transient = isTransientError(message)
+      events.push({
+        eventType: 'error',
+        timestamp: ts,
+        payload: { errorMessage: message, transient, raw: line }
+      })
+    }
   }
 
   // 完成：finishReason 存在且非工具调用续行 => 本轮真正收敛。
@@ -158,6 +173,16 @@ function extractFiles(resp: Record<string, unknown>): string[] {
     }
   }
   return out
+}
+
+/** 打断类错误：用户插话/主动取消导致的轮次终止（正常行为，非故障） */
+export function isInterruptError(message: string): boolean {
+  return /preempt|terminat|abort|cancel|interrupt/i.test(message)
+}
+
+/** 瞬态错误：并发限制/网络抖动/限速——宿主会自动重试 */
+export function isTransientError(message: string): boolean {
+  return /concurrency|network|网络|timeout|timed out|rate limit|ECONN|fetch failed/i.test(message)
 }
 
 /** response.usage 形态：{ inputTokens(含缓存读/写), outputTokens, cacheReadTokens, cacheWriteTokens } */

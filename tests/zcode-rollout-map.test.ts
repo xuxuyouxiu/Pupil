@@ -174,3 +174,37 @@ describe('mapModelIoLine 其他', () => {
     expect(mapped.events[0].timestamp).toBe(1_756_000_000_000)
   })
 })
+
+describe('mapModelIoLine 错误分级（v1.1.3 插话打断修复）', () => {
+  it('插话打断（preempts active turn）不发 error——那是用户主动行为', () => {
+    const r = mapModelIoLine(
+      { turnId: 't1', error: { message: 'v4 sendQueuedNow preempts active turn' } },
+      't1'
+    )
+    expect(r.events.map((e) => e.eventType)).not.toContain('error')
+  })
+
+  it('terminated/abort/cancel 同属打断类，不报错', () => {
+    for (const msg of ['terminated', 'user aborted', 'cancelled by user', 'interrupted']) {
+      const r = mapModelIoLine({ turnId: 't1', error: { message: msg } }, 't1')
+      expect(r.events.map((e) => e.eventType)).not.toContain('error')
+    }
+  })
+
+  it('瞬态错误（concurrency/网络）仍报 error 但标记 transient', () => {
+    const r = mapModelIoLine(
+      { turnId: 't1', error: { message: 'model concurrency limit exceeded' } },
+      't1'
+    )
+    const err = r.events.find((e) => e.eventType === 'error')
+    expect(err).toBeDefined()
+    expect(err?.payload?.transient).toBe(true)
+  })
+
+  it('真错误（无打断/瞬态特征）正常报 error', () => {
+    const r = mapModelIoLine({ turnId: 't1', error: { message: 'invalid api key' } }, 't1')
+    const err = r.events.find((e) => e.eventType === 'error')
+    expect(err).toBeDefined()
+    expect(err?.payload?.transient).toBeFalsy()
+  })
+})

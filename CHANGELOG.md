@@ -2,6 +2,15 @@
 
 本文件记录 Pupil 的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [1.1.3] - 2026-08-28
+
+### 修复
+- **插话时误响「出错」音效**：日志取证发现 ZCode 在用户插话时会主动打断当前轮次（`v4 sendQueuedNow preempts active turn`、`terminated` 等），被打断的请求在日志里记为 error 字段——Pupil 把这类**用户主动行为**当成了故障报错。新增错误三级分类：
+  - **打断类**（preempt/terminat/abort/cancel/interrupt）→ 不发 error（轮次正常切换）
+  - **瞬态类**（并发限制/网络抖动/限速，宿主自动重试）→ 仍提示但不响出错音，标题标明「自动重试中」
+  - **其余** → 正常 error 提醒
+- ZCode 适配器与 shared 契约同步；4 个分级场景单测
+
 ## [1.7.0] - 2026-08-28
 
 ### 修复
