@@ -93,6 +93,22 @@ module.exports = {
 
 注意：文件以主进程权限执行，只放置自己写的或信任来源的脚本；改动后重启 Pupil 生效。
 
+## 内置数据源一览（v1.6.0）
+
+| adapter id | 覆盖工具 | 数据源 |
+|---|---|---|
+| claude-code-hooks / claude-code-log | Claude Code | hooks + ~/.claude/projects 日志 |
+| codex-log | Codex CLI/桌面 | state_5.sqlite + rollout jsonl |
+| hermes-sqlite | Hermes | %LOCALAPPDATA%/hermes/state.db |
+| dsh-api | DSH | Web API 轮询 |
+| zcode-rollout | ZCode | ~/.zcode/cli/rollout/*.jsonl |
+| gemini-cli | Gemini CLI | ~/.gemini/tmp/**（宽容解析，官方 schema 未稳定） |
+| opencode-log | OpenCode | %LOCALAPPDATA%/opencode/log/*.log |
+| http-ingest | **一切其他工具** | HTTP POST / pupil send |
+
+> 豆包 WorkBuddy 等桌面 Web 壳类应用：会话存于加密 IndexedDB，无开放本地文件——
+> 请走 http-ingest 通道接入（一行 curl 或 pupil send 即可），或等待官方开放 CLI。
+
 ## 工具函数（内置适配器同款，可直接借鉴实现）
 
 - `src/adapters/incremental.ts` — `readUtf8Incremental`：UTF-8 安全的文件增量 tail

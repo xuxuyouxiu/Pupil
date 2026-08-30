@@ -2,6 +2,17 @@
 
 本文件记录 Pupil 的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [1.6.0] - 2026-08-28
+
+### 新增
+- **Gemini CLI 适配器**（gemini-cli）：tail `~/.gemini/tmp/**` 会话记录——官方 schema 未稳定，采用宽容解析（role/text 多键探测、functionResponse 剔除、error/isError 捕获）；你装上 Gemini CLI 即插即用，无需升级 Pupil
+- **OpenCode 适配器**（opencode-log）：监控 `%LOCALAPPDATA%/opencode/log/*.log` 增长——会话结构未公开，日志宽容探测（error/fatal 特征行报错、增长即活动脉冲）
+- **AgentType 扩至 8 值**（+gemini/opencode）：面板标签、DNA 徽章色相/边数（gemini 亮金 6 边、opencode 品红 9 边）、窗口跳转关键词、HTTP 接入白名单、断连阈值放宽全链路同步
+- **SDK 文档新增「内置数据源一览」表**：8 个内置源 + http-ingest 通用通道的完整对照
+
+### 说明
+- **豆包 WorkBuddy**：实探为 Chromium 壳（会话存加密 IndexedDB），无开放本地会话文件，文件监控不可行——请走内置 http-ingest 通道接入（`pupil send` 一行命令），SDK 文档已注明。Aider/Goose 等本机未装，装后可用 external adapter 或 http 通道接入
+
 ## [1.5.0] - 2026-08-28
 
 ### 新增

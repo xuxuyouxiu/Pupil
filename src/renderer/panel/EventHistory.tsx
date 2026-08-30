@@ -40,6 +40,8 @@ const AGENT_LABEL: Record<string, string> = {
   hermes: 'Hermes',
   dsh: 'DSH',
   zcode: 'ZCode',
+  gemini: 'Gemini',
+  opencode: 'OpenCode',
   custom: 'Harness'
 }
 

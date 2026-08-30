@@ -88,7 +88,9 @@ const AGENT_WINDOW_HINTS: Partial<Record<AgentType, string[]>> = {
   codex: ['codex'],
   'claude-code': ['claude'],
   dsh: ['dsh'],
-  zcode: ['zcode']
+  zcode: ['zcode'],
+  gemini: ['gemini'],
+  opencode: ['opencode']
 }
 
 /** 本进程窗口（Pupil 球窗/面板窗）绝不作为跳转目标 */

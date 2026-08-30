@@ -30,7 +30,7 @@ const VALID_EVENT_TYPES: AgentEventType[] = [
   'error',
   'heartbeat'
 ]
-const VALID_AGENT_TYPES: AgentType[] = ['claude-code', 'codex', 'hermes', 'dsh', 'zcode', 'custom']
+const VALID_AGENT_TYPES: AgentType[] = ['claude-code', 'codex', 'hermes', 'dsh', 'zcode', 'gemini', 'opencode', 'custom']
 
 interface IngestBody {
   agentType?: unknown

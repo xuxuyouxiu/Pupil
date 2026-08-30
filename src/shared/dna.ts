@@ -27,6 +27,8 @@ const AGENT_HUE: Record<string, number> = {
   hermes: 270, // 紫
   zcode: 210, // 蓝
   dsh: 140, // 绿
+  gemini: 48, // 亮金（Google 系）
+  opencode: 320, // 品红
   custom: 0 // 灰（饱和度另置）
 }
 
@@ -36,6 +38,8 @@ const AGENT_SIDES: Record<string, number> = {
   hermes: 7,
   zcode: 4,
   dsh: 8,
+  gemini: 6,
+  opencode: 9,
   custom: 3
 }
 
