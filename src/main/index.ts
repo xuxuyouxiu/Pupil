@@ -203,6 +203,9 @@ function bootstrap(): void {
           ]),
       { label: t('settings'), click: () => windows.openPanel() },
       { type: 'separator' as const },
+      // v1.5.0 看电视模式：球与面板全藏，监控与通知照常（托盘勾选/快捷键可召回）
+      { label: t('hideToBackground'), click: () => windows.hideToBackground() },
+      { type: 'separator' as const },
       { label: t('exit'), click: () => app.quit() }
     ])
     menu.popup({ window: windows.ballWindow ?? undefined })
@@ -349,6 +352,14 @@ function bootstrap(): void {
     }
     if (bound) console.log(`[shortcut] 面板开关快捷键: ${bound}`)
     else console.warn('[shortcut] 全局快捷键注册失败（被其他程序占用）')
+    // v1.5.0 后台模式切换：Ctrl+Alt+B
+    try {
+      if (globalShortcut.register('Control+Alt+B', () => windows.toggleBackgroundMode())) {
+        console.log('[shortcut] 后台模式快捷键: Control+Alt+B')
+      }
+    } catch {
+      console.warn('[shortcut] Ctrl+Alt+B 注册失败')
+    }
     // 启动 15s 后自动检查一次更新（dev/非打包由 Updater 内部跳过）
     setTimeout(() => void updater.check(false), 15_000)
     // 打包版：写 %LOCALAPPDATA%/Pupil/bin/pupil.cmd（pupil send 命令，无需系统 Node）

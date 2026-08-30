@@ -43,6 +43,8 @@ export class TrayManager {
 
     // 悬停摘要：订阅快照（内部有签名去重）
     this.unsubscribe = this.core.subscribe(() => this.refreshTooltip())
+    // v1.5.0 后台模式：球可见性变化（含快捷键切换）→ 刷新勾选状态
+    this.windows.onBallVisibilityChanged = () => this.refresh()
   }
 
   /** 悬停摘要：「2 运行 · 1 等待 · 1 完成」，勿扰时前缀 🌙 */
@@ -75,15 +77,18 @@ export class TrayManager {
 
   private buildMenu(): Menu {
     const ball = this.windows.ballWindow
+    // v1.5.0 后台模式：勾选状态即 ball 可见性，与球右键「隐藏到后台」互相同步
+    const ballVisible = !!ball && !ball.isDestroyed() && ball.isVisible()
     return Menu.buildFromTemplate([
       {
-        label: t('trayShowBall'),
+        // 后台模式时突出入口（用户通常此时正想找它回来）
+        label: ballVisible ? t('trayShowBall') : t('showBallShortcut'),
         type: 'checkbox',
-        checked: !!ball && !ball.isDestroyed() && ball.isVisible(),
+        checked: ballVisible,
         click: (item) => {
           if (ball && !ball.isDestroyed()) {
-            if (item.checked) ball.show()
-            else ball.hide()
+            if (item.checked) this.windows.restoreFromBackground()
+            else this.windows.hideToBackground()
           }
         }
       },

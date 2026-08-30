@@ -19,6 +19,9 @@ export class WindowManager {
   /** 应用退出中（区别于用户点设置窗口关闭钮：退出要真销毁，关闭钮只隐藏复用） */
   private quitting = false
 
+  /** v1.5.0 球可见性变化回调（tray 注入，用于勾选状态同步） */
+  onBallVisibilityChanged: ((visible: boolean) => void) | null = null
+
   constructor(private config: ConfigStore) {}
 
   /** 创建球窗口（常驻）。v0.5.0：窗口 64×76 —— 上 20px 气泡带 + 下 56px 球体，左右各 4px 留白 */
@@ -85,6 +88,9 @@ export class WindowManager {
     }
     win.once('ready-to-show', showBall)
     win.webContents.once('did-finish-load', () => setTimeout(showBall, 0))
+    // v1.5.0 球可见性变化回调（tray 勾选状态同步；后台模式入口统一走 hideToBackground/restore）
+    win.on('show', () => this.onBallVisibilityChanged?.(true))
+    win.on('hide', () => this.onBallVisibilityChanged?.(false))
     // 拖动后记忆位置：moved 事件在拖动期间高频触发，节流 500ms 合并写盘（v0.9.0）；
     // 结束拖动时立即补一次最终位置，不丢尾
     win.on('moved', () => this.scheduleBallSave())
@@ -316,6 +322,32 @@ export class WindowManager {
 
   closePanel(): void {
     if (this.panel && !this.panel.isDestroyed()) this.panel.close()
+  }
+
+  /**
+   * v1.5.0 后台模式（看电视模式）：球 + 面板全部隐藏，监控与通知照常。
+   * 与托盘「显示悬浮球」勾选同一状态源（ballWindow.isVisible），互相同步。
+   */
+  hideToBackground(): void {
+    this.closePanel()
+    const win = this.ball
+    if (win && !win.isDestroyed()) win.hide()
+  }
+
+  restoreFromBackground(): void {
+    const win = this.ball
+    if (win && !win.isDestroyed()) win.show()
+  }
+
+  get isBackgrounded(): boolean {
+    const win = this.ball
+    return !win || win.isDestroyed() || !win.isVisible()
+  }
+
+  /** v1.5.0 一键切换后台模式（全局快捷键 Ctrl+Alt+B） */
+  toggleBackgroundMode(): void {
+    if (this.isBackgrounded) this.restoreFromBackground()
+    else this.hideToBackground()
   }
 
   /** 面板位置：球右侧，保证不超出工作区 */
