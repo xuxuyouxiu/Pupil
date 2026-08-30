@@ -27,6 +27,7 @@ const AGENT_LABEL: Record<string, string> = {
   zcode: 'ZCode',
   gemini: 'Gemini',
   opencode: 'OpenCode',
+  workbuddy: 'WorkBuddy',
   custom: '自研 Harness'
 }
 

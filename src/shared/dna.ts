@@ -29,6 +29,7 @@ const AGENT_HUE: Record<string, number> = {
   dsh: 140, // 绿
   gemini: 48, // 亮金（Google 系）
   opencode: 320, // 品红
+  workbuddy: 96, // 黄绿（豆包系）
   custom: 0 // 灰（饱和度另置）
 }
 
@@ -40,6 +41,7 @@ const AGENT_SIDES: Record<string, number> = {
   dsh: 8,
   gemini: 6,
   opencode: 9,
+  workbuddy: 7,
   custom: 3
 }
 

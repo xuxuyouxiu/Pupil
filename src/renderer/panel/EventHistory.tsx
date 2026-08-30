@@ -42,6 +42,7 @@ const AGENT_LABEL: Record<string, string> = {
   zcode: 'ZCode',
   gemini: 'Gemini',
   opencode: 'OpenCode',
+  workbuddy: 'WorkBuddy',
   custom: 'Harness'
 }
 

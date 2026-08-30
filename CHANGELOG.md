@@ -2,6 +2,14 @@
 
 本文件记录 Pupil 的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [1.10.0] - 2026-08-28
+
+### 新增
+- **豆包 WorkBuddy 适配器**（workbuddy）：实探发现其开放会话结构——`%LOCALAPPDATA%/DoubaoWork/.../.doubaowork/agent_mode/workspace/.sessions/<会话>/agents/<代理>/system/trajectory.jsonl`（role=user/assistant/tool，assistant 无 tool_calls 即回合最终回复，hermes 同语义）。逐代理 tail、轮次/工具/完成全事件、prompt 摘要齐备；AgentType 扩至 **9 值**（+workbuddy，DNA 黄绿 7 边），标签/跳转关键词（workbuddy/doubao）/白名单/断连阈值全链路同步。设置面板显示「豆包 WorkBuddy」
+
+### 数据源矩阵（当前 10 源）
+Claude Code（hooks/log）· Codex（sqlite/rollout）· Hermes · DSH · ZCode · Gemini CLI · OpenCode · **豆包 WorkBuddy** · HTTP 通用通道（external/第三方）
+
 ## [1.9.0] - 2026-08-28
 
 ### 修复

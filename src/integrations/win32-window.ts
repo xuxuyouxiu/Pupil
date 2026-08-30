@@ -90,7 +90,8 @@ const AGENT_WINDOW_HINTS: Partial<Record<AgentType, string[]>> = {
   dsh: ['dsh'],
   zcode: ['zcode'],
   gemini: ['gemini'],
-  opencode: ['opencode']
+  opencode: ['opencode'],
+  workbuddy: ['workbuddy', 'doubao']
 }
 
 /** 本进程窗口（Pupil 球窗/面板窗）绝不作为跳转目标 */

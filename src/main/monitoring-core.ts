@@ -17,6 +17,7 @@ import { dshApiAdapterFactory } from '../adapters/dsh/api-adapter'
 import { zcodeRolloutAdapterFactory } from '../adapters/zcode/log-adapter'
 import { geminiCliAdapterFactory } from '../adapters/gemini/log-adapter'
 import { opencodeLogAdapterFactory } from '../adapters/opencode/log-adapter'
+import { workBuddyAdapterFactory } from '../adapters/workbuddy/log-adapter'
 import { HooksInstaller, buildHookCommand } from '../adapters/claude-code/hooks-installer'
 import { SessionRegistry } from '../core/session-registry'
 import { InferenceEngine } from '../core/inference'
@@ -39,7 +40,8 @@ const ADAPTER_LABELS: Record<string, string> = {
   'dsh-api': 'DSH（Web API）',
   'zcode-rollout': 'ZCode（会话记录）',
   'gemini-cli': 'Gemini CLI',
-  'opencode-log': 'OpenCode'
+  'opencode-log': 'OpenCode',
+  workbuddy: '豆包 WorkBuddy'
 }
 
 /**
@@ -124,7 +126,8 @@ export class MonitoringCore {
         // ZCode 是会话记录 tail 源：与 codex 同理，请求间隔可能很长
         zcode: config.get('timeoutThresholdMs') ?? 10 * 60 * 1000,
         gemini: config.get('timeoutThresholdMs') ?? 10 * 60 * 1000,
-        opencode: config.get('timeoutThresholdMs') ?? 10 * 60 * 1000
+        opencode: config.get('timeoutThresholdMs') ?? 10 * 60 * 1000,
+        workbuddy: config.get('timeoutThresholdMs') ?? 10 * 60 * 1000
       }
     })
     // v0.4.1：超时/断连标记首次翻转 → 音效+Toast（此前只变色不出声）
@@ -164,6 +167,7 @@ export class MonitoringCore {
     this.adapters.register(zcodeRolloutAdapterFactory) // 通道 A（ZCode 会话记录 tail）
     this.adapters.register(geminiCliAdapterFactory) // 通道 A（Gemini CLI 会话 tail）
     this.adapters.register(opencodeLogAdapterFactory) // 通道 A（OpenCode 日志监控）
+    this.adapters.register(workBuddyAdapterFactory) // 通道 A（豆包 WorkBuddy trajectory tail）
 
     // P2-6 第三方 adapter 动态加载：%APPDATA%/pupil/adapters/*.js（单文件失败跳过）
     const externals = await loadExternalAdapters()
@@ -184,7 +188,8 @@ export class MonitoringCore {
       'dsh-api',
       'zcode-rollout',
       'gemini-cli',
-      'opencode-log'
+      'opencode-log',
+      'workbuddy'
     ]
 
     const disabled = new Set(this.config.get('disabledAdapters') ?? [])
@@ -228,7 +233,7 @@ export class MonitoringCore {
     // 把该源"已完成/idle"的近期会话修正回 running（注入 thinking 事件由状态机解释），
     // 消除「刚发消息就显示完成」与「后台命令跑着却显示完成」两类误报。
     const repairRunningStates = (): void => {
-      const AGENTS_OF_INTEREST: AgentType[] = ['zcode', 'gemini', 'codex', 'opencode']
+      const AGENTS_OF_INTEREST: AgentType[] = ['zcode', 'gemini', 'codex', 'opencode', 'workbuddy']
       const now = Date.now()
       let changed = false
       for (const view of this.registry.snapshot()) {
