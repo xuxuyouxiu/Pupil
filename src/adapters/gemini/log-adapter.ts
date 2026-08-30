@@ -82,7 +82,7 @@ export function mapGeminiLine(
 
   if ((role === 'user' || role === 'human') && !isToolResult(line) && text) {
     const prompt = sanitizePrompt(text)
-    events.push({ eventType: 'turn_started', timestamp: ts, ...(prompt ? { payload: { prompt } } : {}) })
+    events.push({ eventType: 'turn_started', timestamp: ts, ...(prompt ? { payload: { prompt, title: prompt } } : {}) })
   }
 
   if (line.error || line.isError === true) {

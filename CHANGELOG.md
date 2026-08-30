@@ -2,6 +2,11 @@
 
 本文件记录 Pupil 的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [1.11.0] - 2026-08-30
+
+### 修复
+- **会话标题全是数字字母 ID，无法辨认**：zcode/gemini/opencode 三个日志型适配器从不发 `payload.title`，registry 回退到 sessionId（uuid/哈希）——面板里全是「2489d061-abc」这类天书。现三源全部以**会话首个用户指令摘要**作为标题（zcode 从基线扫描最早一轮 user prompt 提取，新轮次实时刷新；gemini 同步；opencode 日志无 prompt 来源维持 ID，等后续 `opencode export` 升级）——面板一眼即知每个会话在干什么
+
 ## [1.10.0] - 2026-08-28
 
 ### 新增

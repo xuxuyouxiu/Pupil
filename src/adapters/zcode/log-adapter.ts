@@ -77,7 +77,12 @@ export function mapModelIoLine(
   // 轮次边界：turnId 首见/变化即新一轮。v1.2.0 附带本轮用户指令摘要（回顾系统任务标题）
   if (turnId && turnId !== prevTurnId) {
     const prompt = extractPrompt(line)
-    events.push({ eventType: 'turn_started', timestamp: ts, ...(prompt ? { payload: { prompt } } : {}) })
+    // v1.11.0 prompt 同时作为会话标题（面板显示"任务在干什么"而非 ID）
+    events.push({
+      eventType: 'turn_started',
+      timestamp: ts,
+      ...(prompt ? { payload: { prompt, title: prompt } } : {})
+    })
   }
 
   const resp = (line.response ?? {}) as Record<string, unknown>
@@ -257,6 +262,8 @@ export class ZcodeRolloutAdapter implements AgentAdapter {
         // 基线 = 最后一行的 turnId；若其 finishReason 为工具续行（或缺失），视为回合仍开着
         let lastTurnId: string | undefined
         let openTurn = false
+        // v1.11.0 会话标题：最早一轮的 user 指令摘要
+        let firstPrompt: string | undefined
         for (const raw of text.split('\n')) {
           if (!raw.trim()) continue
           try {
@@ -267,6 +274,9 @@ export class ZcodeRolloutAdapter implements AgentAdapter {
               const resp = (line.response ?? {}) as Record<string, unknown>
               const fr = typeof resp.finishReason === 'string' ? resp.finishReason : ''
               openTurn = !fr || /tool/i.test(fr)
+            }
+            if (firstPrompt === undefined) {
+              firstPrompt = extractPrompt(line)
             }
           } catch {
             /* 半行忽略 */
@@ -286,7 +296,11 @@ export class ZcodeRolloutAdapter implements AgentAdapter {
           sessionId: deriveSessionId(p),
           eventType: 'session_started',
           timestamp: Date.now(),
-          payload: { raw: { filePath: p } }
+          payload: {
+            raw: { filePath: p },
+            // v1.11.0 会话标题：最早一轮的 user 指令摘要（否则面板只能显示 ID）
+            ...(firstPrompt ? { title: firstPrompt, prompt: firstPrompt } : {})
+          }
         })
         // 恢复运行中回合：时长从重启时刻起算（好于 --:--）
         if (openTurn) {
@@ -295,7 +309,8 @@ export class ZcodeRolloutAdapter implements AgentAdapter {
             agentType: 'zcode',
             sessionId: deriveSessionId(p),
             eventType: 'turn_started',
-            timestamp: Date.now()
+            timestamp: Date.now(),
+            ...(firstPrompt ? { payload: { title: firstPrompt } } : {})
           })
         }
       } catch {
