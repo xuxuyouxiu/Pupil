@@ -33,15 +33,6 @@ Claude Code（hooks/log）· Codex（sqlite/rollout）· Hermes · DSH · ZCode 
 ## [1.7.0] - 2026-08-28
 
 ### 修复
-- **插话时误响「出错」音效**：日志取证发现 ZCode 在用户插话时会主动打断当前轮次（`v4 sendQueuedNow preempts active turn`、`terminated` 等），被打断的请求在日志里记为 error 字段——Pupil 把这类**用户主动行为**当成了故障报错。新增错误三级分类：
-  - **打断类**（preempt/terminat/abort/cancel/interrupt）→ 不发 error（轮次正常切换）
-  - **瞬态类**（并发限制/网络抖动/限速，宿主自动重试）→ 仍提示但不响出错音，标题标明「自动重试中」
-  - **其余** → 正常 error 提醒
-- ZCode 适配器与 shared 契约同步；4 个分级场景单测
-
-## [1.7.0] - 2026-08-28
-
-### 修复
 - **系统性审计后的统一根治：日志滞后型数据源（zcode/gemini/codex/opencode）的两类误报**——
   1. **「刚发消息就提示完成」**：对话日志要等模型首响应落地才写行，空窗期内球停留在上一轮的完成态
   2. **「后台跑命令识别不到完成/悬空」**：会话内跑后台命令不产生 LLM 请求 → 日志停更 → 静默启发式误判
@@ -53,6 +44,17 @@ Claude Code（hooks/log）· Codex（sqlite/rollout）· Hermes · DSH · ZCode 
 
 ### 测试
 - process-activity 5 场景（持续忙/彻底空闲/忙转闲衰减/进程退出清理/计数器回绕）；全量 192 测试
+
+## [1.1.3] - 2026-08-28
+
+> ⚠️ 勘误：本版本当时被错误打上 v1.7.0 标签发布（版本号漂移事故的一部分），正确版本号为 1.1.3。内容如下：
+
+### 修复
+- **插话时误响「出错」音效**：日志取证发现 ZCode 在用户插话时会主动打断当前轮次（`v4 sendQueuedNow preempts active turn`、`terminated` 等），被打断的请求在日志里记为 error 字段——Pupil 把这类**用户主动行为**当成了故障报错。新增错误三级分类：
+  - **打断类**（preempt/terminat/abort/cancel/interrupt）→ 不发 error（轮次正常切换）
+  - **瞬态类**（并发限制/网络抖动/限速，宿主自动重试）→ 仍提示但不响出错音，标题标明「自动重试中」
+  - **其余** → 正常 error 提醒
+- ZCode 适配器与 shared 契约同步；4 个分级场景单测
 
 ## [1.6.0] - 2026-08-28
 

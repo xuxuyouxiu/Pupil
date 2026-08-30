@@ -34,38 +34,12 @@ def main() -> None:
 
     dist = "release"
 
-    # v1.12.0 差量更新关键步：向 latest.yml 的 files 数组注入 blockmap 条目。
-    # electron-builder 生成的 latest.yml 默认只列 exe——electron-updater 拿不到
-    # blockmap 信息就只能全量下载（88MB）；注入后按差异块下载（通常几 MB）。
-    # 同时把 files[].url 升级为 CDN 绝对地址（generic provider 相对路径也可，绝对更稳）。
-    yml_file = os.path.join(dist, "latest.yml")
-    if not os.path.exists(yml_file):
-        sys.exit("[sync-oss] 缺少构建产物: latest.yml")
+    # v1.12.0 勘误：此前版本曾在此注入 blockmap 条目到 latest.yml 的 files 数组，
+    # 误以为差量依赖该条目——实际上 electron-updater 的 getBlockMapFiles() 从
+    # exe URL 派生 blockmap 地址（+".blockmap" 后缀 / 版本号替换），yml 无需改动。
+    # 该注入已撤销，保持 electron-builder 标准格式。
     exe_name = f"Pupil-{version}-x64.exe"
     blockmap_name = f"{exe_name}.blockmap"
-    blockmap_file = os.path.join(dist, blockmap_name)
-    if not os.path.exists(blockmap_file):
-        sys.exit(f"[sync-oss] 缺少构建产物: {blockmap_file}")
-
-    import hashlib
-    import base64
-    bm_data = open(blockmap_file, "rb").read()
-    bm_sha512 = base64.b64encode(hashlib.sha512(bm_data).digest()).decode()
-    bm_size = len(bm_data)
-
-    nl = chr(10)
-    yml = open(yml_file, encoding="utf-8").read()
-    # files 数组追加 blockmap 条目（与 exe 同目录，gzip:false 与 builder 惯例一致）
-    bm_entry = (
-        "  - url: " + blockmap_name + nl
-        + "    sha512: " + bm_sha512 + nl
-        + "    size: " + str(bm_size) + nl
-    )
-    if "blockmap" not in yml:
-        # 插在 files: 列表末尾（第一个非 files 缩进的顶层键之前）
-        yml = yml.replace(nl + "path:", nl + bm_entry + "path:", 1)
-        open(yml_file, "w", encoding="utf-8").write(yml)
-        print("[sync-oss] latest.yml 已注入 blockmap 条目（差量更新生效）")
 
     targets = [
         (exe_name, "max-age=31536000, immutable"),
